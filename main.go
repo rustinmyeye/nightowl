@@ -8,7 +8,7 @@ import (
 
 func main() {
 
-	if err := cmd.NightOwl().Execute(); err != nil {
+	if err := cmd.Execute(); err != nil {
 		fmt.Println("failed to execute Nightowl")
 	}
 }

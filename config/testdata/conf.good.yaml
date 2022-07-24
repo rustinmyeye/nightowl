@@ -1,0 +1,19 @@
+ergo_node:
+  fdqn: "213.239.193.208"
+  scheme: "http"
+  port: 9053
+  user: "user"
+  password: "pass123"
+  api_key: "abcdef1234"
+  wallet_password: "wallPass"
+
+explorer_node:
+  fqdn: "ergo-explorer-cdn.getblok.io"
+  scheme: "https"
+  port: 443
+
+rng:
+  port: 8089
+#nats:
+#  endpoint:
+
