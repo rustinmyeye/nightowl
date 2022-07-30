@@ -119,6 +119,7 @@ loop:
 			// clear structs
 			var ergTxs = erg.ErgBoxIds{}
 			var ergUtxo = erg.ErgTxOutputNode{}
+			var isSettled bool
 			// Need to keep retrying if this fails
 			currHeight, err := s.ergNode.GetCurrenHeight()
 			if err != nil {
@@ -200,6 +201,12 @@ loop:
 										err := s.processBet(b, ergUtxo, ergTx, i, j)
 										if err != nil {
 											s.logger.WithFields(log.Fields{"error": err.Error()}).Error("failed to process bet")
+										} else {
+											err = s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"], "settled", "true").Err()
+											if err != nil {
+												s.logger.WithFields(log.Fields{"error": err.Error()}).Errorf("failed to set hash '%s:settled' key to true in redis db", "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"])
+											}
+											isSettled = true
 										}
 									}
 
@@ -216,13 +223,27 @@ loop:
 									}
 
 									// check if settled already
-									isSettled, _ := strconv.ParseBool(bet["settled"])
+									isSettled, _ = strconv.ParseBool(bet["settled"])
 									if !isSettled && bet["randomNum"] != "" {
 										err := s.processBet(bet, ergUtxo, ergTx, i, j)
 										if err != nil {
 											s.logger.WithFields(log.Fields{"error": err.Error()}).Error("failed to process bet")
+										} else {
+											err = s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"], "settled", "true").Err()
+											if err != nil {
+												s.logger.WithFields(log.Fields{"error": err.Error()}).Errorf("failed to set hash '%s:settled' key to true in redis db", "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"])
+											}
+											isSettled = true
 										}
-										lastHeight = ergTx.Height
+									}
+								}
+								
+								if isSettled {
+									// change lastBetHeight if we know we have successfully settled every bet which has
+									// a height less than lastBetHeight
+									err = s.rdb.Set(s.ctx, "oracle:lastBetHeight", ergTx.Height, 0).Err()
+									if err != nil {
+										s.logger.WithFields(log.Fields{"error": err.Error()}).Error("failed to set key 'oracle:lastBetHeight' to redis db")
 									}
 								}
 								s.logger.WithFields(log.Fields{"durationMs": time.Since(startBet).Milliseconds(), "erg_utxo_box_id": ergUtxo.BoxId}).Info("finished processing roulette bet")
@@ -302,13 +323,6 @@ func (s *Service) processBet(bet map[string]string, box erg.ErgTxOutputNode, tx 
 		err = s.rdb.HSet(s.ctx, "roulette:"+box.BoxId+":"+bet["playerAddr"], tx_id).Err()
 		if err != nil {
 			return fmt.Errorf("failed to set txId for key '%s' to redis db - %s", "roulette:"+box.BoxId+":"+bet["playerAddr"], err)
-		}
-
-		// change lastBetHeight if we know we have successfully settled every bet which has
-		// a height less than lastBetHeight
-		err = s.rdb.Set(s.ctx, "oracle:lastBetHeight", tx.Height, 0).Err()
-		if err != nil {
-			return fmt.Errorf("failed to set key 'oracle:lastBetHeight' to redis db - %s", err)
 		}
 	}
 
