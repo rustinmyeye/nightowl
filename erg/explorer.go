@@ -53,7 +53,6 @@ func (e *Explorer) GetOracleTxs(minHeight, maxHeight int) (ErgBoxIds, error) {
 	if err != nil {
 		return ergTxs, fmt.Errorf("failed to build oracle transactions request - %s", err.Error())
 	}
-	req.Header.Set("no-backend-func", "GetOracleTxs")
 
 	resp, err := e.client.Do(req)
 	if err != nil {

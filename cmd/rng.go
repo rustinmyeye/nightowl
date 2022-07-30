@@ -68,7 +68,7 @@ func rngSvcCommand(logger *log.Entry) *cobra.Command {
 			// Connect to the nats server
 			nats, err := nats.Connect(natsEndpoint)
 			if err != nil {
-				logger.WithFields(log.Fields{"error": err.Error()}).Fatal("failed to connect to ':4222' nats server")
+				logger.WithFields(log.Fields{"error": err.Error()}).Fatalf("failed to connect to %s nats server", natsEndpoint)
 			}
 
 			_, err = rng.NewService(logger, nats)

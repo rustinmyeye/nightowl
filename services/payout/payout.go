@@ -57,8 +57,7 @@ func NewService(logger *log.Entry) (service *Service, err error) {
 	retryClient.RequestLogHook = func(l retryablehttp.Logger, r *http.Request, i int) {
 		retryCount := i
 		if retryCount > 0 {
-			header := r.Header.Get("no-backend-func")
-			logger.WithFields(log.Fields{"caller": header, "retryCount": retryCount}).Errorf("func call to %s failed retrying", header)
+			logger.WithFields(log.Fields{"caller": r.URL.Path, "retryCount": retryCount}).Errorf("func call to %s failed retrying", r.URL.String())
 		}
 	}
 

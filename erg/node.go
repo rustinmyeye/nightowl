@@ -68,7 +68,6 @@ func (n *ErgNode) unlockWallet() ([]byte, error) {
 	}
 	req.SetBasicAuth(n.user, n.pass)
 	req.Header.Set("api_key", n.apiKey)
-	req.Header.Set("no-backend-func", "unlockWallet")
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := n.client.Do(req)
@@ -95,7 +94,6 @@ func (n *ErgNode) lockWallet() ([]byte, error) {
 	}
 	req.SetBasicAuth(n.user, n.pass)
 	req.Header.Set("api_key", n.apiKey)
-	req.Header.Set("no-backend-func", "lockWallet")
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := n.client.Do(req)
@@ -123,7 +121,6 @@ func (n *ErgNode) GetCurrenHeight() (int, error) {
 	}
 	req.SetBasicAuth(n.user, n.pass)
 	req.Header.Set("api_key", n.apiKey)
-	req.Header.Set("no-backend-func", "GetCurrenHeight")
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := n.client.Do(req)
@@ -165,7 +162,6 @@ func (n *ErgNode) PostErgOracleTx(payload []byte) ([]byte, error) {
 	}
 	req.SetBasicAuth(n.user, n.pass)
 	req.Header.Set("api_key", n.apiKey)
-	req.Header.Set("no-backend-func", "PostErgOracleTx")
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := n.client.Do(req)
@@ -196,7 +192,6 @@ func (n *ErgNode) SerializeErgBox(boxId string) (string, error) {
 		return bytes.Bytes, fmt.Errorf("error creating SerializeErgBox request - %s", err.Error())
 	}
 	req.SetBasicAuth(n.user, n.pass)
-	req.Header.Set("no-backend-func", "SerializeErgBox")
 
 	resp, err := n.client.Do(req)
 	if err != nil {
@@ -226,7 +221,6 @@ func (n *ErgNode) GetErgUtxoBox(boxId string) (ErgTxOutputNode, error) {
 		return utxo, fmt.Errorf("error creating getErgBoxes request - %s", err.Error())
 	}
 	req.SetBasicAuth(n.user, n.pass)
-	req.Header.Set("no-backend-func", "GetErgUtxoBox")
 
 	resp, err := n.client.Do(req)
 	if err != nil {
@@ -256,7 +250,6 @@ func (n *ErgNode) ErgoTreeToAddress(ergoTree string) (string, error) {
 		return "", fmt.Errorf("error creating ergoTreeToAddress request - %s", err.Error())
 	}
 	req.SetBasicAuth(n.user, n.pass)
-	req.Header.Set("no-backend-func", "ErgoTreeToAddress")
 
 	resp, err := n.client.Do(req)
 	if err != nil {
