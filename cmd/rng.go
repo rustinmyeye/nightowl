@@ -26,6 +26,14 @@ func rngSvcCommand(logger *log.Entry) *cobra.Command {
 				"hostname": hostname,
 			})
 
+			if value := viper.Get("logging.level"); value != nil {
+				lvl, err := log.ParseLevel(value.(string))
+				if err != nil {
+					logger.Warn("config logging.level is not valid, defaulting to info log level")
+				}
+				log.SetLevel(lvl)
+			}
+
 			// validate configs and set defaults if necessary
 			if value := viper.Get("nats.endpoint"); value != nil {
 				natsEndpoint = value.(string)

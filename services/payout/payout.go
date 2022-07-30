@@ -94,8 +94,6 @@ func NewService(logger *log.Entry) (service *Service, err error) {
 
 func (s *Service) payoutBets(stop chan bool) {
 	var lastHeight int
-	var ergTxs erg.ErgBoxIds
-	var ergUtxo erg.ErgTxOutputNode
 
 	// get last known height stored in the redis db
 	lastBetHeight, err := s.rdb.Get(s.ctx, "oracle:lastBetHeight").Result()
@@ -119,15 +117,21 @@ loop:
 			s.logger.Info("stopping payoutBets() loop...")
 			break loop
 		default:
+			// clear structs
+			var ergTxs = erg.ErgBoxIds{}
+			var ergUtxo = erg.ErgTxOutputNode{}
 			// Need to keep retrying if this fails
 			currHeight, err := s.ergNode.GetCurrenHeight()
 			if err != nil {
 				s.logger.Errorf("failed to get current erg height - %s", err.Error())
 			}
 
+			start := time.Now()
 			ergTxs, err = s.ergExplorer.GetOracleTxs(lastHeight, currHeight)
 			if err != nil {
-				s.logger.Errorf("failed to get oracle txs - %s", err.Error())
+				s.logger.WithFields(log.Fields{"caller": "GetOracleTxs", "error": err.Error(), "durationMs": time.Since(start).Milliseconds()}).Error("failed to get oracle txs")
+			} else {
+				s.logger.WithFields(log.Fields{"caller": "GetOracleTxs", "durationMs": time.Since(start).Milliseconds()}).Infof("received %d txs to process", len(ergTxs.Items))
 			}
 
 			for _, ergTx := range ergTxs.Items {
@@ -159,10 +163,10 @@ loop:
 							start := time.Now()
 							ergUtxo, err = s.ergNode.GetErgUtxoBox(boxId)
 							if err != nil {
-								s.logger.WithFields(log.Fields{"caller": "GetErgUtxoBox", "error": err.Error(), "durationMs": time.Since(start).Milliseconds()}).Error("failed to get erg utxo box")
+								s.logger.WithFields(log.Fields{"caller": "GetErgUtxoBox", "error": err.Error(), "durationMs": time.Since(start).Milliseconds(), "erg_utxo_box_id": boxId}).Error("failed to get erg utxo box")
+							} else {
+								s.logger.WithFields(log.Fields{"caller": "GetErgUtxoBox", "durationMs": time.Since(start).Milliseconds(), "erg_utxo_box_id": boxId}).Debug("successfully got erg utxo box")
 							}
-							s.logger.WithFields(log.Fields{"caller": "GetErgUtxoBox", "durationMs": time.Since(start).Milliseconds(), "erg_utxo_box_id": boxId}).Debug("successfully got erg utxo box")
-
 
 							// check that bet ergoTree is the roulette house contract
 							if ergUtxo.ErgoTree == rouletteErgoTree {

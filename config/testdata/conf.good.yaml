@@ -1,3 +1,6 @@
+logging:
+  level: info
+
 ergo_node:
   fdqn: "213.239.193.208"
   scheme: "http"
@@ -14,6 +17,6 @@ explorer_node:
 
 rng:
   port: 8089
-#nats:
-#  endpoint:
 
+nats:
+  endpoint: "nats://127.0.0.1:4222"

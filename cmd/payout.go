@@ -24,8 +24,16 @@ func payoutSvcCommand(logger *log.Entry) *cobra.Command {
 				"hostname": hostname,
 			})
 
+			if value := viper.Get("logging.level"); value != nil {
+				lvl, err := log.ParseLevel(value.(string))
+				if err != nil {
+					logger.Warn("config logging.level is not valid, defaulting to info log level")
+				}
+				log.SetLevel(lvl)
+			}
+
 			if value := viper.Get("explorer_node.fqdn"); value == nil {
-				viper.Set("explorer_node.fqdn", "ergo-explorer-cdn.getblok.io")
+				viper.Set("explorer_node.fqdn", "api.ergoplatform.com")
 			}
 
 			if value := viper.Get("explorer_node.scheme"); value == nil {
