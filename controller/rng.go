@@ -19,6 +19,16 @@ const (
 	ContentTypeJSON = "application/json"
 )
 
+func opts() httprouter.Handle {
+	return func (w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, owl-session-id")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "")
+	}
+}
+
 func SendRandNum(logger *log.Entry, nc *nats.Conn) httprouter.Handle {
 	return func(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 		start := time.Now()

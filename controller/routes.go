@@ -30,6 +30,7 @@ func NewRouter(logger *log.Entry, nats *nats.Conn) *Router {
 	}
 
 	h.GET("/api/v1/random-number/:game", SendRandNum(logger, nats))
+	h.OPTIONS("/api/v1/random-number/{game}", opts())
 
 	r.ready = true
 
