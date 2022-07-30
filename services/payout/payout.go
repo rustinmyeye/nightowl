@@ -237,7 +237,7 @@ loop:
 										}
 									}
 								}
-								
+
 								if isSettled {
 									// change lastBetHeight if we know we have successfully settled every bet which has
 									// a height less than lastBetHeight
@@ -245,6 +245,7 @@ loop:
 									if err != nil {
 										s.logger.WithFields(log.Fields{"error": err.Error()}).Error("failed to set key 'oracle:lastBetHeight' to redis db")
 									}
+									lastHeight = ergTx.Height
 								}
 								s.logger.WithFields(log.Fields{"durationMs": time.Since(startBet).Milliseconds(), "erg_utxo_box_id": ergUtxo.BoxId}).Info("finished processing roulette bet")
 							}
