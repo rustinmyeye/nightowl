@@ -12,7 +12,7 @@ import (
 	"github.com/go-redis/redis/v9"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/nightowlcasino/nightowl/erg"
-	log "github.com/sirupsen/logrus"
+	"github.com/nightowlcasino/nightowl/logger"
 )
 
 const (
@@ -28,12 +28,11 @@ type Service struct {
 	ergNode     *erg.ErgNode
 	ergExplorer *erg.Explorer
 	rdb         *redis.Client
-	logger      *log.Entry
 	stop        chan bool
 	done        chan bool
 }
 
-func NewService(logger *log.Entry) (service *Service, err error) {
+func NewService() (service *Service, err error) {
 
 	ctx := context.Background()
 
@@ -57,16 +56,19 @@ func NewService(logger *log.Entry) (service *Service, err error) {
 	retryClient.RequestLogHook = func(l retryablehttp.Logger, r *http.Request, i int) {
 		retryCount := i
 		if retryCount > 0 {
-			logger.WithFields(log.Fields{"caller": r.URL.Path, "retryCount": retryCount}).Errorf("func call to %s failed retrying", r.URL.String())
+			logger.WithFields(logger.Fields{
+				"caller":      r.URL.Path,
+				"retryCount":  retryCount,
+			}).Infof(0, "func call to %s failed retrying", r.URL.String())
 		}
 	}
 
-	ergExplorerClient, err := erg.NewExplorer(retryClient, logger)
+	ergExplorerClient, err := erg.NewExplorer(retryClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create erg explorer client - %s", err.Error())
 	}
 
-	ergNodeClient, err := erg.NewErgNode(retryClient, logger)
+	ergNodeClient, err := erg.NewErgNode(retryClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create erg node client - %s", err.Error())
 	}
@@ -83,7 +85,6 @@ func NewService(logger *log.Entry) (service *Service, err error) {
 		ergNode:     ergNodeClient,
 		ergExplorer: ergExplorerClient,
 		rdb:         rdb,
-		logger:      logger,
 		stop:        make(chan bool),
 		done:        make(chan bool),
 	}
@@ -91,8 +92,14 @@ func NewService(logger *log.Entry) (service *Service, err error) {
 	return service, err
 }
 
+func wait(sleepTime time.Duration, c chan bool) {
+	time.Sleep(sleepTime)
+	c <- true
+}
+
 func (s *Service) payoutBets(stop chan bool) {
 	var lastHeight int
+	checkbets := make(chan bool, 1)
 
 	// get last known height stored in the redis db
 	lastBetHeight, err := s.rdb.Get(s.ctx, "oracle:lastBetHeight").Result()
@@ -101,21 +108,23 @@ func (s *Service) payoutBets(stop chan bool) {
 		lastHeight = 0
 		err := s.rdb.Set(s.ctx, "oracle:lastBetHeight", lastHeight, 0).Err()
 		if err != nil {
-			s.logger.WithFields(log.Fields{"error": err.Error()}).Errorf("failed to set key '%s' to redis db", "oracle:lastBetHeight")
+			logger.WithError(err).Infof(0, "failed to set key '%s' to redis db", "oracle:lastBetHeight")
 		}
 	case err != nil:
-		s.logger.WithFields(log.Fields{"error": err.Error()}).Errorf("failed to get key '%s' from redis db", "oracle:lastBetHeight")
+		logger.WithError(err).Infof(0, "failed to get key '%s' from redis db", "oracle:lastBetHeight")
 	default:
 		lastHeight, _ = strconv.Atoi(lastBetHeight)
 	}
+
+	checkbets <- true
 
 loop:
 	for {
 		select {
 		case <-stop:
-			s.logger.Info("stopping payoutBets() loop...")
+			logger.Infof(0, "stopping payoutBets() loop...")
 			break loop
-		default:
+		case <-checkbets:
 			// clear structs
 			var ergTxs = erg.ErgBoxIds{}
 			var ergUtxo = erg.ErgTxOutputNode{}
@@ -123,15 +132,21 @@ loop:
 			// Need to keep retrying if this fails
 			currHeight, err := s.ergNode.GetCurrenHeight()
 			if err != nil {
-				s.logger.Errorf("failed to get current erg height - %s", err.Error())
+				logger.WithError(err).Infof(0, "failed to get current erg height")
 			}
 
 			start := time.Now()
 			ergTxs, err = s.ergExplorer.GetOracleTxs(lastHeight, currHeight)
 			if err != nil {
-				s.logger.WithFields(log.Fields{"caller": "GetOracleTxs", "error": err.Error(), "durationMs": time.Since(start).Milliseconds()}).Error("failed to get oracle txs")
+				logger.WithError(err).WithFields(logger.Fields{
+					"caller":     "GetOracleTxs",
+					"durationMs": time.Since(start).Milliseconds(),
+				}).Infof(0, "failed to get oracle txs")
 			} else {
-				s.logger.WithFields(log.Fields{"caller": "GetOracleTxs", "durationMs": time.Since(start).Milliseconds()}).Infof("received %d txs to process", len(ergTxs.Items))
+				logger.WithFields(logger.Fields{
+					"caller":     "GetOracleTxs",
+					"durationMs": time.Since(start).Milliseconds(),
+				}).Infof(0, "received %d txs to process", len(ergTxs.Items))
 			}
 
 			for _, ergTx := range ergTxs.Items {
@@ -160,100 +175,120 @@ loop:
 
 					if len(ergBoxIds) > 0 && ergBoxIds[0] != "" {
 						for j, boxId := range ergBoxIds {
-							start := time.Now()
-							ergUtxo, err = s.ergNode.GetErgUtxoBox(boxId)
-							if err != nil {
-								s.logger.WithFields(log.Fields{"caller": "GetErgUtxoBox", "error": err.Error(), "durationMs": time.Since(start).Milliseconds(), "erg_utxo_box_id": boxId}).Error("failed to get erg utxo box")
-							} else {
-								s.logger.WithFields(log.Fields{"caller": "GetErgUtxoBox", "durationMs": time.Since(start).Milliseconds(), "erg_utxo_box_id": boxId}).Debug("successfully got erg utxo box")
-							}
+							// check if stop signal was triggered or we are stuck in this loop
+							select {
+							case <-stop:
+								logger.Infof(0, "stopping payoutBets() loop...")
+								break loop
+							default:
+								start := time.Now()
+								ergUtxo, err = s.ergNode.GetErgUtxoBox(boxId)
+								if err != nil {
+									logger.WithError(err).WithFields(logger.Fields{
+										"caller":          "GetErgUtxoBox",
+										"durationMs":      time.Since(start).Milliseconds(),
+										"erg_utxo_box_id": boxId,
+									}).Infof(0, "failed to get erg utxo box")
+								} else {
+									logger.WithFields(logger.Fields{
+										"caller":          "GetErgUtxoBox",
+										"durationMs":      time.Since(start).Milliseconds(),
+										"erg_utxo_box_id": boxId,
+									}).Debugf(2, "successfully got erg utxo box")
+								}
 
-							// check that bet ergoTree is the roulette house contract
-							if ergUtxo.ErgoTree == rouletteErgoTree {
-								startBet := time.Now()
+								// check that bet ergoTree is the roulette house contract
+								if ergUtxo.ErgoTree == rouletteErgoTree {
+									startBet := time.Now()
 
-								plyrAddr, _ := s.ergNode.ErgoTreeToAddress(ergUtxo.AdditionalRegisters.R6[4:])
+									plyrAddr, _ := s.ergNode.ErgoTreeToAddress(ergUtxo.AdditionalRegisters.R6[4:])
 
-								// check if bet exists in redis db
-								bet, err := s.rdb.HGetAll(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr).Result()
-								switch {
-								case err == redis.Nil || len(bet) == 0:
-									var randNum string
-									if i+2 <= len(ethHashSlices)-1 {
-										randNum = ethHashSlices[i+2]
-									}
-
-									b := make(map[string]string)
-									b["settled"]    = "false"
-									b["winnerAmt"]  = strconv.Itoa(ergUtxo.Assets[0].Amount)
-									b["subgame"]    = ergUtxo.AdditionalRegisters.R4
-									b["number"]     = ergUtxo.AdditionalRegisters.R5
-									b["playerAddr"] = plyrAddr
-									b["randomNum"]  = randNum
-
-									// add bet to redis db
-									err := s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr, b).Err()
-									if err != nil {
-										s.logger.WithFields(log.Fields{"error": err.Error()}).Errorf("failed to set key '%s' to redis db", "roulette:"+ergUtxo.BoxId+":"+plyrAddr)
-									}
-
-									if randNum != "" {
-										err := s.processBet(b, ergUtxo, ergTx, i, j)
-										if err != nil {
-											s.logger.WithFields(log.Fields{"error": err.Error()}).Error("failed to process bet")
-										} else {
-											err = s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"], "settled", "true").Err()
-											if err != nil {
-												s.logger.WithFields(log.Fields{"error": err.Error()}).Errorf("failed to set hash '%s:settled' key to true in redis db", "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"])
-											}
-											isSettled = true
-										}
-									}
-
-								case err != nil:
-									s.logger.WithFields(log.Fields{"error": err.Error()}).Errorf("failed to get key '%s' from redis db", "roulette:"+ergUtxo.BoxId+":"+plyrAddr)
-								default:
-									if bet["randomNum"] == "" {
+									// check if bet exists in redis db
+									bet, err := s.rdb.HGetAll(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr).Result()
+									switch {
+									case err == redis.Nil || len(bet) == 0:
+										var randNum string
 										if i+2 <= len(ethHashSlices)-1 {
-											err := s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr, "randomNum", ethHashSlices[i+2]).Err()
-											if err != nil {
-												s.logger.WithFields(log.Fields{"error": err.Error()}).Errorf("failed to set key '%s' to redis db", "roulette:"+ergUtxo.BoxId+":"+plyrAddr)
-											}
+											randNum = ethHashSlices[i+2]
 										}
-									}
 
-									// check if settled already
-									isSettled, _ = strconv.ParseBool(bet["settled"])
-									if !isSettled && bet["randomNum"] != "" {
-										err := s.processBet(bet, ergUtxo, ergTx, i, j)
+										b := make(map[string]string)
+										b["settled"]    = "false"
+										b["winnerAmt"]  = strconv.Itoa(ergUtxo.Assets[0].Amount)
+										b["subgame"]    = ergUtxo.AdditionalRegisters.R4
+										b["number"]     = ergUtxo.AdditionalRegisters.R5
+										b["playerAddr"] = plyrAddr
+										b["randomNum"]  = randNum
+
+										// add bet to redis db
+										err := s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr, b).Err()
 										if err != nil {
-											s.logger.WithFields(log.Fields{"error": err.Error()}).Error("failed to process bet")
-										} else {
-											err = s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"], "settled", "true").Err()
+											logger.WithError(err).Infof(0, "failed to set key '%s' to redis db", "roulette:"+ergUtxo.BoxId+":"+plyrAddr)
+										}
+
+										if randNum != "" {
+											err := s.processBet(b, ergUtxo, ergTx, i, j)
 											if err != nil {
-												s.logger.WithFields(log.Fields{"error": err.Error()}).Errorf("failed to set hash '%s:settled' key to true in redis db", "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"])
+												logger.WithError(err).Infof(0, "failed to process bet")
+											} else {
+												err = s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"], "settled", "true").Err()
+												if err != nil {
+													logger.WithError(err).Infof(0, "failed to set hash '%s:settled' key to true in redis db", "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"])
+												}
+												isSettled = true
 											}
-											isSettled = true
+										}
+
+									case err != nil:
+										logger.WithError(err).Infof(0, "failed to get key '%s' from redis db", "roulette:"+ergUtxo.BoxId+":"+plyrAddr)
+									default:
+										if bet["randomNum"] == "" {
+											if i+2 <= len(ethHashSlices)-1 {
+												err := s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr, "randomNum", ethHashSlices[i+2]).Err()
+												if err != nil {
+													logger.WithError(err).Infof(0, "failed to set key '%s' to redis db", "roulette:"+ergUtxo.BoxId+":"+plyrAddr)
+												}
+											}
+										}
+
+										// check if settled already
+										isSettled, _ = strconv.ParseBool(bet["settled"])
+										if !isSettled && bet["randomNum"] != "" {
+											err := s.processBet(bet, ergUtxo, ergTx, i, j)
+											if err != nil {
+												logger.WithError(err).Infof(0, "failed to process bet")
+											} else {
+												err = s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"], "settled", "true").Err()
+												if err != nil {
+													logger.WithError(err).Infof(0, "failed to set hash '%s:settled' key to true in redis db", "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"])
+												}
+												isSettled = true
+											}
 										}
 									}
-								}
 
-								if isSettled {
-									// change lastBetHeight if we know we have successfully settled every bet which has
-									// a height less than lastBetHeight
-									err = s.rdb.Set(s.ctx, "oracle:lastBetHeight", ergTx.Height, 0).Err()
-									if err != nil {
-										s.logger.WithFields(log.Fields{"error": err.Error()}).Error("failed to set key 'oracle:lastBetHeight' to redis db")
+									if isSettled {
+										// change lastBetHeight if we know we have successfully settled every bet which has
+										// a height less than lastBetHeight
+										err = s.rdb.Set(s.ctx, "oracle:lastBetHeight", ergTx.Height, 0).Err()
+										if err != nil {
+											logger.WithError(err).Infof(0, "failed to set key 'oracle:lastBetHeight' to redis db")
+										}
+										lastHeight = ergTx.Height
 									}
-									lastHeight = ergTx.Height
+									logger.WithFields(logger.Fields{
+										"durationMs":      time.Since(startBet).Milliseconds(),
+										"erg_utxo_box_id": ergUtxo.BoxId,
+									}).Infof(0, "finished processing roulette bet")
 								}
-								s.logger.WithFields(log.Fields{"durationMs": time.Since(startBet).Milliseconds(), "erg_utxo_box_id": ergUtxo.BoxId}).Info("finished processing roulette bet")
 							}
 						}
 					}
 				}
 			}
-			time.Sleep(2 * time.Minute)
+			// start timer in separate go routine
+			go wait(2 * time.Minute, checkbets)
+		default:
 		}
 	}
 }
@@ -264,13 +299,13 @@ func (s *Service) Start() {
 	go s.payoutBets(stopPayout)
 
 	// Wait for a "stop" message in the background to stop the service.
-	go func(logger *log.Entry, stopPayout chan bool) {
-		go func(logger *log.Entry) {
+	go func(stopPayout chan bool) {
+		go func() {
 			<-s.stop
 			stopPayout <- true
 			s.done <- true
-		}(s.logger)
-	}(s.logger, stopPayout)
+		}()
+	}(stopPayout)
 }
 
 func (s *Service) Stop() {
@@ -300,22 +335,39 @@ func (s *Service) processBet(bet map[string]string, box erg.ErgTxOutputNode, tx 
 		} else {
 			winnerAddr = houseAddress
 		}
-		s.logger.WithFields(log.Fields{"erg_utxo_box_id": box.BoxId, "winner_addr": winnerAddr, "random_number": randNum, "subgame": int(sg), "chipspot": int(cs)}).Debug("winner of roulette bet")
+		logger.WithFields(logger.Fields{
+			"erg_utxo_box_id": box.BoxId,
+			"winner_addr":     winnerAddr,
+			"random_number":   randNum,
+			"subgame":         int(sg),
+			"chipspot":        int(cs),
+		}).Debugf(2, "successfully got erg utxo box")
 
 		serializedBetBox, _ := s.ergNode.SerializeErgBox(box.BoxId)
 		serializedOracleBox, _ := s.ergNode.SerializeErgBox(tx.Outputs[0].BoxId)
 		
 		start := time.Now()
 		txUnsigned, _ := buildResultSmartContractTx(box, encodeZigZag64(uint64(boxPosX)), encodeZigZag64(uint64(boxPosY)), winnerAddr, serializedBetBox, serializedOracleBox)
-		s.logger.WithFields(log.Fields{"caller": "buildResultSmartContractTx", "durationMs": time.Since(start).Milliseconds(), "txUnsigned": string(txUnsigned)}).Debug("")
+		logger.WithFields(logger.Fields{
+			"caller":     "buildResultSmartContractTx",
+			"durationMs": time.Since(start).Milliseconds(),
+			"txUnsigned": string(txUnsigned),
+		}).Debugf(2, "")
 		
 		start = time.Now()
 		txSigned, err := s.ergNode.PostErgOracleTx(txUnsigned)
 		if err != nil {
-			s.logger.WithFields(log.Fields{"caller": "PostErgOracleTx", "durationMs": time.Since(start).Milliseconds()}).Error("")
+			logger.WithError(err).WithFields(logger.Fields{
+				"caller":     "PostErgOracleTx",
+				"durationMs": time.Since(start).Milliseconds(),
+			}).Infof(0, "")
 			return fmt.Errorf("call to PostErgOracleTx failed - %s", err.Error())
 		}
-		s.logger.WithFields(log.Fields{"caller": "PostErgOracleTx", "durationMs": time.Since(start).Milliseconds(), "tx_id": string(txSigned)}).Info("successfully sent tx to result smart contract")
+		logger.WithFields(logger.Fields{
+			"caller":     "PostErgOracleTx",
+			"durationMs": time.Since(start).Milliseconds(),
+			"tx_id":      string(txSigned),
+		}).Infof(0, "successfully sent tx to result smart contract")
 		
 		// add tx id to the payout entry in redis
 		tx_id := make(map[string]interface{})

@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 
 	"github.com/nats-io/nats.go"
-	log "github.com/sirupsen/logrus"
+
+	"github.com/nightowlcasino/nightowl/logger"
 )
 
 const (
@@ -13,7 +14,6 @@ const (
 
 type Service struct {
 	component string
-	logger    *log.Entry
 	Nats      *nats.Conn
 }
 
@@ -27,17 +27,16 @@ var (
 	combinedHashes = make([]CombinedHashes, SLICE_SIZE)
 )
 
-func NewService(logger *log.Entry, nats *nats.Conn) (service *Service, err error) {
+func NewService(nats *nats.Conn) (service *Service, err error) {
 	service = &Service{
 		component: "rng",
-		logger:    logger,
 		Nats:      nats,
 	}
 
 	if _, err = nats.Subscribe("eth.hash", service.handleNATSMessages); err != nil {
 		return nil, err
 	}
-	logger.Info("subscribed to eth.hash")
+	logger.Infof(0, "successfully subscribed to eth.hash")
 
 	return service, err
 }
@@ -47,7 +46,7 @@ func (s *Service) handleNATSMessages(msg *nats.Msg) {
 	var hash CombinedHashes
 	err := json.Unmarshal(msg.Data, &hash)
 	if err != nil {
-		s.logger.WithFields(log.Fields{"error": err.Error()}).Error("failed to unmarshal CombinedHashes")
+		logger.WithError(err).Infof(0, "failed to unmarshal CombinedHashes")
 	} else {
 		combinedHashes[index%SLICE_SIZE] = hash
 		// the ERG BoxId random numbers are stored in a hash map and will be set to the 2nd ETH hash block Id

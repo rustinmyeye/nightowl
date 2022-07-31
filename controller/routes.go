@@ -6,7 +6,6 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/nats-io/nats.go"
 	"github.com/nightowlcasino/nightowl/services/rng"
-	log "github.com/sirupsen/logrus"
 )
 
 type Router struct {
@@ -20,7 +19,7 @@ func (r *Router) Ready() {
 	r.ready = true
 }
 
-func NewRouter(logger *log.Entry, nats *nats.Conn) *Router {
+func NewRouter(nats *nats.Conn) *Router {
 	h := httprouter.New()
 	h.RedirectTrailingSlash = false
 	h.RedirectFixedPath = false
@@ -29,7 +28,7 @@ func NewRouter(logger *log.Entry, nats *nats.Conn) *Router {
 		Handler: h,
 	}
 
-	h.GET("/api/v1/random-number/:game", SendRandNum(logger, nats))
+	h.GET("/api/v1/random-number/:game", SendRandNum(nats))
 	h.OPTIONS("/api/v1/random-number/{game}", opts())
 
 	r.ready = true

@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/go-retryablehttp"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
@@ -21,11 +20,9 @@ type Explorer struct {
 	url *url.URL
 	user string
 	pass string
-
-	logger *log.Entry
 }
 
-func NewExplorer(client *retryablehttp.Client, logger *log.Entry) (*Explorer, error) {
+func NewExplorer(client *retryablehttp.Client) (*Explorer, error) {
 	var node *Explorer
 	var u *url.URL
 
@@ -36,7 +33,6 @@ func NewExplorer(client *retryablehttp.Client, logger *log.Entry) (*Explorer, er
 
 	node = &Explorer{
 		client:     client,
-		logger:     logger,
 		url:        u,
 	    user:       viper.Get("ergo_node.user").(string),
 	    pass:       viper.Get("ergo_node.password").(string),

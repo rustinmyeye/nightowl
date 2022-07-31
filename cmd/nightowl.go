@@ -1,16 +1,17 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 
 	"github.com/nightowlcasino/nightowl/config"
+	"github.com/nightowlcasino/nightowl/logger"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var (
-	logger       *log.Entry
 	hostname     string
 	natsEndpoint string
 	cfgFile      string
@@ -20,6 +21,9 @@ var (
 		Long: `
 Long Description`,
 	}
+
+	MissingNodeWalletPassErr = errors.New("config ergo_node.wallet_password is missing")
+	MissingNodeApiKeyErr = errors.New("config ergo_node.api_key is missing")
 )
 
 // Execute is the core component for all the backend services
@@ -30,17 +34,12 @@ func Execute() error {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	log.SetFormatter(&log.JSONFormatter{})
-	log.SetLevel(log.InfoLevel)
-
-	logger = log.WithField("appname", "no-core")
-
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./config.yml)")
 	viper.BindPFlag("config",cmd.Flags().Lookup("config"))
 	viper.BindEnv("HOSTNAME")
 	
-	cmd.AddCommand(rngSvcCommand(logger))
-	cmd.AddCommand(payoutSvcCommand(logger))
+	cmd.AddCommand(rngSvcCommand())
+	cmd.AddCommand(payoutSvcCommand())
 }
 
 func initConfig() {
@@ -55,8 +54,8 @@ func initConfig() {
 		}
 	}
 
-	logger = logger.WithFields(log.Fields{
-		"hostname": hostname,
+	logger.SetDefaults(logger.Fields{
+		"host": hostname,
 	})
 
 	if cfgFile != "" {
@@ -65,7 +64,8 @@ func initConfig() {
 		// use current directory
 		dir, err := os.Getwd()
 		if err != nil {
-			logger.WithFields(log.Fields{"error": err.Error()}).Fatal("failed to get working directory")
+			logger.WithError(err).Infof(0, "failed to get working directory")
+			os.Exit(1)
 		}
 		viper.AddConfigPath(dir)
 		viper.SetConfigName("config")
@@ -73,8 +73,9 @@ func initConfig() {
 	}
 
 	if err := viper.ReadInConfig(); err == nil {
-		logger.Infof("using config file: %s", viper.ConfigFileUsed())
+		logger.Infof(0, "using config file: %s", viper.ConfigFileUsed())
 	} else {
-		logger.WithFields(log.Fields{"error": err.Error()}).Fatal("failed to read config file")
+		logger.WithError(err).Infof(0, "failed to read config file")
+		os.Exit(1)
 	}
 }

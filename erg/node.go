@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/go-retryablehttp"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
@@ -30,11 +29,9 @@ type ErgNode struct {
 	pass string
 	apiKey string
 	walletPass string
-
-	logger *log.Entry
 }
 
-func NewErgNode(client *retryablehttp.Client, logger *log.Entry) (*ErgNode, error) {
+func NewErgNode(client *retryablehttp.Client) (*ErgNode, error) {
 	var node *ErgNode
 	var u *url.URL
 
@@ -45,7 +42,6 @@ func NewErgNode(client *retryablehttp.Client, logger *log.Entry) (*ErgNode, erro
 
 	node = &ErgNode{
 		client:     client,
-		logger:     logger,
 		url:        u,
 	    user:       viper.Get("ergo_node.user").(string),
 	    pass:       viper.Get("ergo_node.password").(string),
