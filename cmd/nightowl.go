@@ -6,7 +6,6 @@ import (
 
 	"github.com/nightowlcasino/nightowl/config"
 	"github.com/nightowlcasino/nightowl/logger"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -50,7 +49,8 @@ func initConfig() {
 		var err error
 		hostname, err = os.Hostname()
 		if err != nil {
-			log.Fatal("unable to get hostname")
+			logger.WithError(err).Infof(0, "unable to get hostname")
+			os.Exit(1)
 		}
 	}
 
