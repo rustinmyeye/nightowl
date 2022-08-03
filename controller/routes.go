@@ -29,7 +29,7 @@ func NewRouter(nats *nats.Conn) *Router {
 	}
 
 	h.GET("/api/v1/random-number/:game", SendRandNum(nats))
-	h.OPTIONS("/api/v1/random-number/{game}", opts())
+	h.OPTIONS("/api/v1/random-number/:game", opts())
 
 	r.ready = true
 
