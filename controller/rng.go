@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -18,11 +19,26 @@ const (
 	HeaderContentType = "Content-Type"
 	// ContentTypeJSON is the application/json MIME type.
 	ContentTypeJSON = "application/json"
+
+	hexBytes = "0123456789abcdef"
 )
 
 var (
 	RandNumNotFound = errors.New("timeout - random number not found")
 )
+
+func wait(sleepTime time.Duration, c chan bool) {
+	time.Sleep(sleepTime)
+	c <- true
+}
+
+func random(n int, src rand.Source) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = hexBytes[src.Int63()%int64(len(hexBytes))]
+	}
+	return string(b)
+}
 
 func opts() httprouter.Handle {
 	return func (w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
@@ -88,6 +104,55 @@ func SendRandNum(nc *nats.Conn) httprouter.Handle {
 				}
 			}
 		}(game, boxId, walletAddr, nc)
+	
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "")
+	}
+}
+
+func SendTestRandNum(nc *nats.Conn) httprouter.Handle {
+	return func(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+		start := time.Now()
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		sessionId := req.Header.Get("owl-session-id")
+		walletAddr := req.URL.Query().Get("walletAddr")
+		reqURL := req.URL
+		urlPath := reqURL.Path
+		logger.WithFields(logger.Fields{
+			"caller":      "sendTestRandNum",
+			"url_path":    urlPath,
+			"game":        "roulette",
+			"wallet_addr": walletAddr,
+			"session_id":  sessionId,
+		}).Infof(0, "sendRandNum called")
+
+		go func(walletAddr string, nc *nats.Conn) {
+			randSrc := rand.NewSource(time.Now().UnixNano())
+			randNum := random(8, randSrc)
+
+			wake := make(chan bool, 1)
+			go wait(10 * time.Second, wake)
+
+			for {
+				select {
+				case <-wake:
+					topic := fmt.Sprintf("roulette.%s", walletAddr)
+						nc.Publish(topic, []byte(randNum))
+						logger.WithFields(logger.Fields{
+							"caller":      "sendRandNum",
+							"durationMs":  time.Since(start).Milliseconds(),
+							"rand_num":    randNum,
+							"game":        "roulette",
+							"wallet_addr": walletAddr,
+							"session_id":  sessionId,
+						}).Infof(0, "successfully sent random number")
+					return
+				default:
+				}
+			}
+		}(walletAddr, nc)
 	
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "")
