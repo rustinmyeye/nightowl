@@ -12,7 +12,8 @@ import (
 )
 
 var (
-	oracleAddress = "4FC5xSYb7zfRdUhm6oRmE11P2GJqSMY8UARPbHkmXEq6hTinXq4XNWdJs73BEV44MdmJ49Qo"
+	oracleAddress     = "4FC5xSYb7zfRdUhm6oRmE11P2GJqSMY8UARPbHkmXEq6hTinXq4XNWdJs73BEV44MdmJ49Qo"
+	getErgTxsEndpoint = "/api/v1/transactions/"
 )
 
 type Explorer struct {
@@ -67,4 +68,36 @@ func (e *Explorer) GetOracleTxs(minHeight, maxHeight int) (ErgBoxIds, error) {
 	}
 
 	return ergTxs, nil
+}
+
+func (e *Explorer) GetErgTx(unconfirmedTx string) (ErgTx, error) {
+	var ergTx ErgTx
+
+	endpoint := fmt.Sprintf("%s%s%s", e.url.String(), getErgTxsEndpoint, unconfirmedTx)
+	req, err := retryablehttp.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return ergTx, fmt.Errorf("failed to build explorer transaction request - %s", err.Error())
+	}
+
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return ergTx, fmt.Errorf("error calling ergo api explorer - %s", err.Error())
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return ergTx, fmt.Errorf("error reading erg tx body - %s", err.Error())
+	}
+
+	if resp.StatusCode != 200 {
+		return ergTx, fmt.Errorf("http status code != 200 - %s", resp.Status)
+	}
+
+	err = json.Unmarshal(body, &ergTx)
+	if err != nil {
+		return ergTx, fmt.Errorf("error unmarshalling erg tx - %s", err.Error())
+	}
+
+	return ergTx, nil
 }
