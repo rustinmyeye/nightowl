@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/nats-io/nats.go"
+	"github.com/spf13/viper"
 
 	"github.com/nightowlcasino/nightowl/logger"
 )
@@ -33,10 +34,10 @@ func NewService(nats *nats.Conn) (service *Service, err error) {
 		Nats:      nats,
 	}
 
-	if _, err = nats.Subscribe("eth.hash", service.handleNATSMessages); err != nil {
+	if _, err = nats.Subscribe(viper.Get("nats.random_number_subj").(string), service.handleNATSMessages); err != nil {
 		return nil, err
 	}
-	logger.Infof(0, "successfully subscribed to eth.hash")
+	logger.Infof(0, "successfully subscribed to %s", viper.Get("nats.random_number_subj").(string))
 
 	return service, err
 }
