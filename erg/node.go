@@ -13,13 +13,14 @@ import (
 )
 
 var (
-	walletLock     = "/wallet/lock"
-	walletUnlock   = "/wallet/unlock"
-	postErgTx      = "/wallet/transaction/send"
-	getUtxoBox     = "/utxo/byId/"
-	getlastHeaders = "/blocks/lastHeaders/1"
-	ergoTreeToAddr = "/utils/ergoTreeToAddress/"
-	serializeBox   = "/utxo/withPool/byIdBinary/"
+	walletLock         = "/wallet/lock"
+	walletUnlock       = "/wallet/unlock"
+	postErgTx          = "/wallet/transaction/send"
+	getUtxoBox         = "/utxo/byId/"
+	getLastHeaders     = "/blocks/lastHeaders/1"
+	getUnconfirmedTxs  = "/transactions/unconfirmed"
+	ergoTreeToAddr     = "/utils/ergoTreeToAddress/"
+	serializeBox       = "/utxo/withPool/byIdBinary/"
 )
 
 type ErgNode struct {
@@ -109,7 +110,7 @@ func (n *ErgNode) GetCurrenHeight() (int, error) {
 	var header ErgHeader
 	var height int
 
-	endpoint := fmt.Sprintf("%s%s", n.url.String(), getlastHeaders)
+	endpoint := fmt.Sprintf("%s%s", n.url.String(), getLastHeaders)
 
 	req, err := retryablehttp.NewRequest("GET", endpoint, nil)
 	if err != nil {
@@ -137,6 +138,38 @@ func (n *ErgNode) GetCurrenHeight() (int, error) {
 	height = header[0].Height
 
 	return height, nil
+}
+
+func (n *ErgNode) GetUnconfirmedTxs() ([]ErgTx, error) {
+	var txs []ErgTx
+
+	endpoint := fmt.Sprintf("%s%s", n.url.String(), getUnconfirmedTxs)
+
+	req, err := retryablehttp.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return txs, fmt.Errorf("error creating unconfirmed txs request - %s", err.Error())
+	}
+	req.SetBasicAuth(n.user, n.pass)
+	req.Header.Set("api_key", n.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := n.client.Do(req)
+	if err != nil {
+		return txs, fmt.Errorf("error calling GetUnconfirmedTxs - %s", err.Error())
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return txs, fmt.Errorf("error reading erg txs body - %s", err.Error())
+	}
+
+	err = json.Unmarshal(body, &txs)
+	if err != nil {
+		return txs, fmt.Errorf("error unmarshalling unconfirmed Txs body - %s", err.Error())
+	}
+
+	return txs, nil
 }
 
 func (n *ErgNode) PostErgOracleTx(payload []byte) ([]byte, error) {

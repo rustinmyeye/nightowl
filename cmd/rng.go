@@ -45,6 +45,10 @@ func rngSvcCommand() *cobra.Command {
 				natsEndpoint = nats.DefaultURL
 			}
 
+			if value := viper.Get("nats.random_number_subj"); value == nil {
+				viper.Set("nats.random_number_subj", "drand.hash")
+			}
+
 			if value := viper.Get("rng.port"); value == nil {
 				viper.Set("rng.port", "8089")
 			}
