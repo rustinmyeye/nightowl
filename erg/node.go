@@ -13,14 +13,14 @@ import (
 )
 
 var (
-	walletLock         = "/wallet/lock"
-	walletUnlock       = "/wallet/unlock"
-	postErgTx          = "/wallet/transaction/send"
-	getUtxoBox         = "/utxo/byId/"
-	getLastHeaders     = "/blocks/lastHeaders/1"
-	getUnconfirmedTxs  = "/transactions/unconfirmed"
-	ergoTreeToAddr     = "/utils/ergoTreeToAddress/"
-	serializeBox       = "/utxo/withPool/byIdBinary/"
+	walletLock        = "/wallet/lock"
+	walletUnlock      = "/wallet/unlock"
+	postErgTx         = "/wallet/transaction/send"
+	getUtxoBox        = "/utxo/byId/"
+	getLastHeaders    = "/blocks/lastHeaders/1"
+	getUnconfirmedTxs = "/transactions/unconfirmed"
+	ergoTreeToAddr    = "/utils/ergoTreeToAddress/"
+	serializeBox      = "/utxo/withPool/byIdBinary/"
 )
 
 type ErgNode struct {
