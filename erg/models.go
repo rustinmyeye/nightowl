@@ -1,18 +1,25 @@
 package erg
 
+type ErgBlock struct {
+	HeaderId string  `json:"headerId"`
+	Txs      []ErgTx `json:"transactions"`
+}
+
 type ErgBoxIds struct {
 	Items []ErgTx `json:"items"`
 }
 
 type ErgTx struct {
-	Id      string        `json:"id"`
-	Height  int           `json:"inclusionHeight"`
-	Outputs []ErgTxOutput `json:"outputs"`
+	Id            string        `json:"id"`
+	Height        int           `json:"inclusionHeight"`
+	Confirmations int           `json:"numConfirmations,omitempty"`
+	Outputs       []ErgTxOutput `json:"outputs"`
 }
 
 type ErgTxOutput struct {
 	BoxId               string    `json:"boxId"`
 	AdditionalRegisters Registers `json:"additionalRegisters"`
+	ErgoTree            string    `json:"ergoTree"`
 }
 
 type ErgTxOutputNode struct {
