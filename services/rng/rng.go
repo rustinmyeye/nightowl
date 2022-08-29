@@ -50,12 +50,12 @@ func (s *Service) handleNATSMessages(msg *nats.Msg) {
 		logger.WithError(err).Infof(0, "failed to unmarshal CombinedHashes")
 	} else {
 		combinedHashes[index%SLICE_SIZE] = hash
-		// the ERG BoxId random numbers are stored in a hash map and will be set to the 2nd ETH hash block Id
+		// the ERG BoxId random numbers are stored in a hash map and will be set to the next drand hash number
 		// from the initially associated one
-		if index >= 2 {
-			h := combinedHashes[(index-2)%SLICE_SIZE]
+		if index >= 1 {
+			h := combinedHashes[(index-1)%SLICE_SIZE]
 			for _, boxId := range h.Boxes {
-				allErgBlockRandNums.randNums[boxId] = hash.Hash[2:10]
+				allErgBlockRandNums.randNums[boxId] = hash.Hash[0:8]
 			}
 		}
 
