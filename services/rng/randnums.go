@@ -5,7 +5,7 @@ import (
 )
 
 type ErgBlockRandNum struct {
-	mu       *sync.Mutex
+	mu       sync.Mutex
 	randNums map[string]string
 }
 
