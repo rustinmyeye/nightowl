@@ -16,6 +16,13 @@ type ErgTx struct {
 	Outputs       []ErgTxOutput `json:"outputs"`
 }
 
+type ErgTxUnconfirmed struct {
+	Id            string            `json:"id"`
+	Height        int               `json:"inclusionHeight"`
+	Confirmations int               `json:"numConfirmations,omitempty"`
+	Outputs       []ErgTxOutputNode `json:"outputs"`
+}
+
 type ErgTxOutput struct {
 	BoxId               string    `json:"boxId"`
 	AdditionalRegisters Registers `json:"additionalRegisters,omitempty"`
