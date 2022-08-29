@@ -140,8 +140,8 @@ func (n *ErgNode) GetCurrenHeight() (int, error) {
 	return height, nil
 }
 
-func (n *ErgNode) GetUnconfirmedTxs() ([]ErgTx, error) {
-	var txs []ErgTx
+func (n *ErgNode) GetUnconfirmedTxs() ([]ErgTxUnconfirmed, error) {
+	var txs []ErgTxUnconfirmed
 
 	endpoint := fmt.Sprintf("%s%s", n.url.String(), getUnconfirmedTxs)
 
