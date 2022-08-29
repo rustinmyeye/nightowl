@@ -18,14 +18,14 @@ type ErgTx struct {
 
 type ErgTxOutput struct {
 	BoxId               string    `json:"boxId"`
-	AdditionalRegisters Registers `json:"additionalRegisters"`
+	AdditionalRegisters Registers `json:"additionalRegisters,omitempty"`
 	ErgoTree            string    `json:"ergoTree"`
 }
 
 type ErgTxOutputNode struct {
 	BoxId               string        `json:"boxId"`
-	Assets              []Tokens      `json:"assets"`
-	AdditionalRegisters RegistersNode `json:"additionalRegisters"`
+	Assets              []Tokens      `json:"assets,omitempty"`
+	AdditionalRegisters RegistersNode `json:"additionalRegisters,omitempty"`
 	ErgoTree            string        `json:"ergoTree"`
 }
 
