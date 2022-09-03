@@ -4,7 +4,7 @@ After=syslog.target network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/root/nightowl
+WorkingDirectory=/etc/nightowl
 ExecStart=/usr/local/bin/nightowl rng-svc --config config.yaml
 ExecStop=/bin/kill -15 $MAINPID
 Restart=on-failure
