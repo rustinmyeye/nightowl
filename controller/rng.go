@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/julienschmidt/httprouter"
 	"github.com/nats-io/nats.go"
 	"github.com/nightowlcasino/nightowl/logger"
@@ -51,7 +50,7 @@ func opts() httprouter.Handle {
 }
 
 func SendRandNum(nc *nats.Conn) httprouter.Handle {
-	return func(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	return func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
 		start := time.Now()
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -59,7 +58,7 @@ func SendRandNum(nc *nats.Conn) httprouter.Handle {
 		sessionId := req.Header.Get("owl-session-id")
 		boxId := req.URL.Query().Get("boxId")
 		walletAddr := req.URL.Query().Get("walletAddr")
-		game := mux.Vars(req)["game"]
+		game := params.ByName("game")
 		reqURL := req.URL
 		urlPath := reqURL.Path
 		logger.WithFields(logger.Fields{
