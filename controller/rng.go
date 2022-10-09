@@ -9,7 +9,6 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/nats-io/nats.go"
-	"github.com/nightowlcasino/nightowl/logger"
 	"github.com/nightowlcasino/nightowl/services/rng"
 	"go.uber.org/zap"
 )
@@ -52,6 +51,7 @@ func opts() httprouter.Handle {
 
 func SendRandNum(nc *nats.Conn) httprouter.Handle {
 	return func(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
+		log := zap.L()
 		start := time.Now()
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -62,28 +62,20 @@ func SendRandNum(nc *nats.Conn) httprouter.Handle {
 		game := params.ByName("game")
 		reqURL := req.URL
 		urlPath := reqURL.Path
-		logger.Info("sendRandNum called",
+		log.Info("sendRandNum called",
 			zap.String("url_path", urlPath),
 			zap.String("box_id", boxId),
 			zap.String("game", game),
 			zap.String("wallet_addr", walletAddr),
 			zap.String("session_id", sessionId),
 		)
-		//logger.WithFields(logger.Fields{
-		//	"caller":      "sendRandNum",
-		//	"url_path":    urlPath,
-		//	"box_id":      boxId,
-		//	"game":        game,
-		//	"wallet_addr": walletAddr,
-		//	"session_id":  sessionId,
-		//}).Infof(0, "sendRandNum called")
 
 		go func(game, boxId, walletAddr string, nc *nats.Conn) {
 			timeout := time.NewTicker(120 * time.Second)
 			for {
 				select {
 				case <-timeout.C:
-					logger.Info("sendRandNum timed out",
+					log.Info("sendRandNum timed out",
 						zap.Error(RandNumNotFound),
 						zap.Int64("durationMs", time.Since(start).Milliseconds()),
 						zap.String("box_id", boxId),
@@ -91,20 +83,12 @@ func SendRandNum(nc *nats.Conn) httprouter.Handle {
 						zap.String("wallet_addr", walletAddr),
 						zap.String("session_id", sessionId),
 					)
-					//logger.WithError(RandNumNotFound).WithFields(logger.Fields{
-					//	"caller":      "sendRandNum",
-					//	"durationMs":  time.Since(start).Milliseconds(),
-					//	"box_id":      boxId,
-					//	"game":        game,
-					//	"wallet_addr": walletAddr,
-					//	"session_id":  sessionId,
-					//}).Infof(0, "")
 					return
 				default:
 					if randNum, ok := rng.GetRandHashMap().Get(boxId); ok {
 						topic := fmt.Sprintf("%s.%s", game, walletAddr)
 						nc.Publish(topic, []byte(randNum))
-						logger.Info("successfully sent random number",
+						log.Info("successfully sent random number",
 							zap.Int64("durationMs",  time.Since(start).Milliseconds()),
 							zap.String("rand_num", randNum),
 							zap.String("box_id", boxId),
@@ -112,15 +96,6 @@ func SendRandNum(nc *nats.Conn) httprouter.Handle {
 							zap.String("wallet_addr", walletAddr),
 							zap.String("session_id", sessionId),
 						)
-						//logger.WithFields(logger.Fields{
-						//	"caller":      "sendRandNum",
-						//	"durationMs":  time.Since(start).Milliseconds(),
-						//	"rand_num":    randNum,
-						//	"box_id":      boxId,
-						//	"game":        game,
-						//	"wallet_addr": walletAddr,
-						//	"session_id":  sessionId,
-						//}).Infof(0, "successfully sent random number")
 						return
 					}
 					time.Sleep(5 * time.Second)
@@ -135,6 +110,7 @@ func SendRandNum(nc *nats.Conn) httprouter.Handle {
 
 func SendTestRandNum(nc *nats.Conn) httprouter.Handle {
 	return func(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+		log := zap.L()
 		start := time.Now()
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -143,20 +119,14 @@ func SendTestRandNum(nc *nats.Conn) httprouter.Handle {
 		walletAddr := req.URL.Query().Get("walletAddr")
 		reqURL := req.URL
 		urlPath := reqURL.Path
-		logger.Info("sendRandNum called",
+		fmt.Println("SendTestRandNum called")
+		log.Info("SendTestRandNum called",
 			zap.Int64("durationMs", time.Since(start).Milliseconds()),
 			zap.String("url_path", urlPath),
 			zap.String("game", "roulette"),
 			zap.String("wallet_addr", walletAddr),
 			zap.String("session_id", sessionId),
 		)
-		//logger.WithFields(logger.Fields{
-		//	"caller":      "sendTestRandNum",
-		//	"url_path":    urlPath,
-		//	"game":        "roulette",
-		//	"wallet_addr": walletAddr,
-		//	"session_id":  sessionId,
-		//}).Infof(0, "sendRandNum called")
 
 		go func(walletAddr string, nc *nats.Conn) {
 			randSrc := rand.NewSource(time.Now().UnixNano())
@@ -170,21 +140,13 @@ func SendTestRandNum(nc *nats.Conn) httprouter.Handle {
 				case <-wake:
 					topic := fmt.Sprintf("roulette.%s", walletAddr)
 						nc.Publish(topic, []byte(randNum))
-						logger.Info("successfully sent random number",
+						log.Info("successfully sent random number",
 							zap.Int64("durationMs", time.Since(start).Milliseconds()),
 							zap.String("rand_num", randNum),
 							zap.String("game", "roulette"),
 							zap.String("wallet_addr", walletAddr),
 							zap.String("session_id", sessionId),
 						)
-						//logger.WithFields(logger.Fields{
-						//	"caller":      "sendRandNum",
-						//	"durationMs":  time.Since(start).Milliseconds(),
-						//	"rand_num":    randNum,
-						//	"game":        "roulette",
-						//	"wallet_addr": walletAddr,
-						//	"session_id":  sessionId,
-						//}).Infof(0, "successfully sent random number")
 					return
 				default:
 				}
