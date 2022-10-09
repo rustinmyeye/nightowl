@@ -7,10 +7,12 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nightowlcasino/nightowl/controller"
-	"github.com/nightowlcasino/nightowl/logger"
+
+	_logger "github.com/nightowlcasino/nightowl/logger"
 	"github.com/nightowlcasino/nightowl/services/rng"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 // rngSvcCommand is responsible for listening to frontend requests for a games
@@ -21,22 +23,26 @@ func rngSvcCommand() *cobra.Command {
 		Short: "Run a server that listens for frontend requests for a games random number which it obtains from nightowls oracle pool.",
 		Run: func(_ *cobra.Command, _ []string) {
 
-			logger.SetDefaults(logger.Fields{
-				"app": "no-rng-svc",
-				"host": hostname,
-			})
+			_logger.Initialize("no-rng-svc")
+			log = zap.L()
+			defer log.Sync()
 
-			if value := viper.Get("logging.level"); value != nil {
-				lvl, err := logger.ParseLevel(value.(string))
-				if err != nil {
-					logger.Warnf(1, "config logging.level is not valid, defaulting to info log level")
-					logger.SetVerbosity(1)
-				}
-				logger.SetVerbosity(lvl)
-			} else {
-				logger.Warnf(1, "config logging.level is not found, defaulting to info log level")
-				logger.SetVerbosity(1)
-			}
+			log.WithOptions(zap.Fields(
+				zap.String("app", "no-rng-svc"),
+				zap.String("host", hostname),
+			))
+
+			//if value := viper.Get("logging.level"); value != nil {
+			//	lvl, err := logger.ParseLevel(value.(string))
+			//	if err != nil {
+			//		logger.Warnf(1, "config logging.level is not valid, defaulting to info log level")
+			//		logger.SetVerbosity(1)
+			//	}
+			//	logger.SetVerbosity(lvl)
+			//} else {
+			//	logger.Warnf(1, "config logging.level is not found, defaulting to info log level")
+			//	logger.SetVerbosity(1)
+			//}
 
 			// validate configs and set defaults if necessary
 			if value := viper.Get("nats.endpoint"); value != nil {
@@ -66,24 +72,24 @@ func rngSvcCommand() *cobra.Command {
 			}
 
 			if value := viper.Get("ergo_node.api_key"); value == nil {
-				logger.WithError(MissingNodeApiKeyErr).Infof(0, "required config is absent")
+				log.Error("required config is absent", zap.Error(MissingNodeApiKeyErr))
 				os.Exit(1)
 			}
 
 			if value := viper.Get("ergo_node.wallet_password"); value == nil {
-				logger.WithError(MissingNodeWalletPassErr).Infof(0, "required config is absent")
+				log.Error("required config is absent", zap.Error(MissingNodeWalletPassErr))
 				os.Exit(1)
 			}
 
 			// Connect to the nats server
 			nats, err := nats.Connect(natsEndpoint)
 			if err != nil {
-				logger.WithError(err).Infof(0, "failed to connect to %s nats server", natsEndpoint)
+				log.Error("failed to connect to nats server", zap.Error(err), zap.String("endpoint", natsEndpoint))
 			}
 
 			_, err = rng.NewService(nats)
 			if err != nil {
-				logger.WithError(err).Infof(0, "failed to create rng service")
+				log.Error("failed to create rng service", zap.Error(err))
 			}
 
 			router := controller.NewRouter(nats)
@@ -95,11 +101,11 @@ func rngSvcCommand() *cobra.Command {
 			signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			go func() {
 				s := <-signals
-				logger.Infof(0, "%s signal caught, stopping app", s.String())
+				log.Info(s.String() + " signal caught, stopping app")
 				server.Stop()
 			}()
 
-			logger.Infof(0, "service started...")
+			log.Info("service started...")
 
 			server.Wait()
 		},

@@ -1,159 +1,84 @@
 package logger
 
 import (
-	//"io"
-	//logg "log"
-	"errors"
-	"io"
-	"os"
-	"sync"
-	"time"
-)
-
-const (
-	// queueSize is the size of the logger queue
-	queueSize = 10000
+	"github.com/spf13/viper"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
-	// logger is the package level logger.
-	log *logger
+	logger *zap.Logger
+	path string
 )
 
-// logger handles writing LogMessages to the supplied io.Writer.
-type logger struct {
-	out       io.Writer
-	formatter Formatter
-	defaults  Fields
-	verbosity int
-	queue     chan *Message
-	mutex     sync.RWMutex
+type lumberjackSink struct {
+	*lumberjack.Logger
 }
 
-func init() {
-	// This is a temporary fix for a bug on the Cisco redfish API
-	// Unsolicited response received on idle HTTP channel starting with "\n"; err=<nil>
-	//logg.SetOutput(io.Discard)
+func (lumberjackSink) Sync() error {
+	return nil
+}
 
-	var formatter Formatter
-	formatter = NewJSONFormatter()
+func Initialize(svc string) {
 
-	log = &logger{
-		out:       os.Stdout,
-		formatter: formatter,
-		queue:     make(chan *Message, queueSize),
-		verbosity: 1,
+	if value := viper.Get("LOG_PATH"); value != nil {
+		path = value.(string)
+	} else {
+		path = "/var/log/"
 	}
-	go log.start()
-}
 
-func Debugf(verbosity int, format string, args ...interface{}) {
-	newMessage().Debugf(verbosity, format, args...)
-}
-
-func Infof(code int, format string, args ...interface{}) {
-	newMessage().Infof(code, format, args...)
-}
-
-func Warnf(code int, format string, args ...interface{}) {
-	newMessage().Warnf(code, format, args...)
-}
-
-func SetDefaults(f Fields) {
-	log.SetDefaults(f)
-}
-
-func SetVerbosity(v int) {
-	log.SetVerbosity(v)
-}
-
-func ParseLevel(l string) (int, error) {
-	switch l{
-	case "warn":
-		return 0, nil
-	case "info":
-		return 1, nil
-	case "debug":
-		return 2, nil
-	default:
-		return -1, errors.New("log level unknown")
+	loggerConf := zap.Config{
+		Level: zap.NewAtomicLevelAt(zap.InfoLevel),
+		Encoding: "json",
+		EncoderConfig: ProdEncoderConf(),
+		OutputPaths: []string{"stdout"},
+		ErrorOutputPaths: []string{"stderr"},
 	}
-}
 
-// Flush returns when all messages in the queue prior to the Flush log have
-// been written.
-func (l *logger) Flush() {
-	// Add a very brief delay to ensure nearly-concurrent messages have been
-	// received prior to being flushed
-	time.Sleep(100 * time.Millisecond)
-	flushed := make(chan struct{}, 1)
-	l.Log(&Message{
-		kind:    kindFlush,
-		flushed: flushed,
+	logger = zap.Must(loggerConf.Build())
+
+	ljWriteSyncer := zapcore.AddSync(&lumberjack.Logger{
+		Filename:   path+svc+".log",
+  		MaxSize:    512, // megabytes
+  		MaxBackups: 3,
+  		MaxAge:     30,  // days
 	})
-	<-flushed
+	ljCore := zapcore.NewCore(zapcore.NewJSONEncoder(ProdEncoderConf()), ljWriteSyncer, zap.InfoLevel)
+
+	logger = logger.WithOptions(zap.WrapCore(func(zapcore.Core) zapcore.Core {
+		return zapcore.NewTee(logger.Core(), ljCore)
+	}))
+
+	zap.ReplaceGlobals(logger)
 }
 
-// Log queues the Message for writing.
-func (l *logger) Log(m *Message) {
-	// queue the message
-	l.queue <- m
-
-	if m.code == 0 || m.kind != kindInfo {
-		return
+func Flush() {
+	if logger != nil {
+		logger.Sync()
 	}
 }
 
-func WithError(err error) *Message {
-	return newMessage().WithError(err)
+func ProdEncoderConf() zapcore.EncoderConfig {
+	encConf := zap.NewProductionEncoderConfig()
+	encConf.EncodeTime = zapcore.RFC3339TimeEncoder
+
+	return encConf
 }
 
-func WithFields(fields Fields) *Message {
-	return newMessage().WithFields(fields)
+func Info(msg string, fields ...zap.Field) {
+	logger.Info(msg, fields...)
 }
 
-func (l *logger) SetDefaults(f Fields) {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-	l.defaults = f
+func Error(msg string, fields ...zap.Field) {
+	logger.Error(msg, fields...)
 }
 
-func (l *logger) SetVerbosity(v int) {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-	l.verbosity = v
+func Debug(msg string, fields ...zap.Field) {
+	logger.Debug(msg, fields...)
 }
 
-// start the process that consumes the queued messages, formats them, and
-// then writes them to io.Writer.
-func (l *logger) start() {
-	for {
-		if msg, ok := <-l.queue; ok {
-			l.write(msg)
-			if msg.flushed != nil {
-				close(msg.flushed)
-			}
-		} else {
-			return
-		}
-	}
-}
-
-func (l *logger) write(msg *Message) {
-	// flush messages are ignored
-	if msg.kind == kindFlush {
-		return
-	}
-
-	l.mutex.RLock()
-	defer l.mutex.RUnlock()
-
-	// excluded by verbosity
-	if msg.kind == kindDebug && msg.verbosity > l.verbosity {
-		return
-	}
-
-	// set default fields, format, and write
-	bytes := l.formatter.Format(msg.WithFields(l.defaults))
-	_, _ = l.out.Write(bytes)
+func WithOptions(opts ...zap.Option) {
+	defer zap.ReplaceGlobals(logger)
+	logger = logger.WithOptions(opts...)
 }

@@ -5,8 +5,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
-
-	"github.com/nightowlcasino/nightowl/logger"
+	"go.uber.org/zap"
 )
 
 const (
@@ -26,9 +25,13 @@ type CombinedHashes struct {
 var (
 	index = 0
 	combinedHashes = make([]CombinedHashes, SLICE_SIZE)
+	log *zap.Logger
 )
 
 func NewService(nats *nats.Conn) (service *Service, err error) {
+
+	log = zap.L()
+
 	service = &Service{
 		component: "rng",
 		Nats:      nats,
@@ -37,7 +40,7 @@ func NewService(nats *nats.Conn) (service *Service, err error) {
 	if _, err = nats.Subscribe(viper.Get("nats.random_number_subj").(string), service.handleNATSMessages); err != nil {
 		return nil, err
 	}
-	logger.Infof(0, "successfully subscribed to %s", viper.Get("nats.random_number_subj").(string))
+	log.Info("successfully subscribed to " + viper.Get("nats.random_number_subj").(string))
 
 	return service, err
 }
@@ -47,7 +50,7 @@ func (s *Service) handleNATSMessages(msg *nats.Msg) {
 	var hash CombinedHashes
 	err := json.Unmarshal(msg.Data, &hash)
 	if err != nil {
-		logger.WithError(err).Infof(0, "failed to unmarshal CombinedHashes")
+		log.Error("failed to unmarshal CombinedHashes", zap.Error(err))
 	} else {
 		combinedHashes[index%SLICE_SIZE] = hash
 		// the ERG BoxId random numbers are stored in a hash map and will be set to the next drand hash number
