@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
 	"github.com/nightowlcasino/nightowl/config"
-	"github.com/nightowlcasino/nightowl/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 var (
@@ -20,6 +21,8 @@ var (
 		Long: `
 Long Description`,
 	}
+
+	log *zap.Logger
 
 	MissingNodeWalletPassErr = errors.New("config ergo_node.wallet_password is missing")
 	MissingNodeApiKeyErr = errors.New("config ergo_node.api_key is missing")
@@ -36,7 +39,7 @@ func init() {
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./config.yml)")
 	viper.BindPFlag("config",cmd.Flags().Lookup("config"))
 	viper.BindEnv("HOSTNAME")
-	
+
 	cmd.AddCommand(rngSvcCommand())
 	cmd.AddCommand(payoutSvcCommand())
 }
@@ -49,14 +52,10 @@ func initConfig() {
 		var err error
 		hostname, err = os.Hostname()
 		if err != nil {
-			logger.WithError(err).Infof(0, "unable to get hostname")
+			fmt.Printf("unable to get hostname - %s\n", err.Error())
 			os.Exit(1)
 		}
 	}
-
-	logger.SetDefaults(logger.Fields{
-		"host": hostname,
-	})
 
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
@@ -64,7 +63,7 @@ func initConfig() {
 		// use current directory
 		dir, err := os.Getwd()
 		if err != nil {
-			logger.WithError(err).Infof(0, "failed to get working directory")
+			fmt.Printf("failed to get working directory - %s\n", err.Error())
 			os.Exit(1)
 		}
 		viper.AddConfigPath(dir)
@@ -73,9 +72,9 @@ func initConfig() {
 	}
 
 	if err := viper.ReadInConfig(); err == nil {
-		logger.Infof(0, "using config file: %s", viper.ConfigFileUsed())
+		fmt.Printf("using config file %s\n", viper.ConfigFileUsed())
 	} else {
-		logger.WithError(err).Infof(0, "failed to read config file")
+		fmt.Printf("failed to read config file - %s\n", err.Error())
 		os.Exit(1)
 	}
 }

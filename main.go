@@ -2,12 +2,17 @@ package main
 
 import (
 	"github.com/nightowlcasino/nightowl/cmd"
-	"github.com/nightowlcasino/nightowl/logger"
+	"go.uber.org/zap"
+)
+
+var (
+	log *zap.Logger
 )
 
 func main() {
-
+	
 	if err := cmd.Execute(); err != nil {
-		logger.WithError(err).Infof(0, "failed to execute nightowl")
+		log = zap.L()
+		log.Error("failed to execute nightowl", zap.Error(err))
 	}
 }
