@@ -79,6 +79,6 @@ func Debug(msg string, fields ...zap.Field) {
 }
 
 func WithOptions(opts ...zap.Option) {
-	defer zap.ReplaceGlobals(logger)
 	logger = logger.WithOptions(opts...)
+	zap.ReplaceGlobals(logger)
 }

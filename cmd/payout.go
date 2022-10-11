@@ -5,7 +5,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/nightowlcasino/nightowl/logger"
 	_logger "github.com/nightowlcasino/nightowl/logger"
 	"github.com/nightowlcasino/nightowl/services/payout"
 	"github.com/spf13/cobra"
@@ -22,13 +21,12 @@ func payoutSvcCommand() *cobra.Command {
 		Run: func(_ *cobra.Command, _ []string) {
 
 			_logger.Initialize("no-payout-svc")
-			log = zap.L()
-			defer log.Sync()
-
-			logger.WithOptions(zap.Fields(
+			_logger.WithOptions(zap.Fields(
 				zap.String("app", "no-payout-svc"),
 				zap.String("host", hostname),
 			))
+			log = zap.L()
+			defer log.Sync()
 
 			//if value := viper.Get("logging.level"); value != nil {
 			//	lvl, err := logger.ParseLevel(value.(string))
