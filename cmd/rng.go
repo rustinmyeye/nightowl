@@ -24,13 +24,12 @@ func rngSvcCommand() *cobra.Command {
 		Run: func(_ *cobra.Command, _ []string) {
 
 			_logger.Initialize("no-rng-svc")
-			log = zap.L()
-			defer log.Sync()
-
-			log.WithOptions(zap.Fields(
+			_logger.WithOptions(zap.Fields(
 				zap.String("app", "no-rng-svc"),
 				zap.String("host", hostname),
 			))
+			log = zap.L()
+			defer log.Sync()
 
 			//if value := viper.Get("logging.level"); value != nil {
 			//	lvl, err := logger.ParseLevel(value.(string))
