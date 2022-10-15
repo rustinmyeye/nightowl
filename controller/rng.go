@@ -119,7 +119,6 @@ func SendTestRandNum(nc *nats.Conn) httprouter.Handle {
 		walletAddr := req.URL.Query().Get("walletAddr")
 		reqURL := req.URL
 		urlPath := reqURL.Path
-		fmt.Println("SendTestRandNum called")
 		log.Info("SendTestRandNum called",
 			zap.Int64("durationMs", time.Since(start).Milliseconds()),
 			zap.String("url_path", urlPath),

@@ -8,7 +8,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nightowlcasino/nightowl/controller"
 
-	_logger "github.com/nightowlcasino/nightowl/logger"
+	logger "github.com/nightowlcasino/nightowl/logger"
 	"github.com/nightowlcasino/nightowl/services/rng"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -23,11 +23,7 @@ func rngSvcCommand() *cobra.Command {
 		Short: "Run a server that listens for frontend requests for a games random number which it obtains from nightowls oracle pool.",
 		Run: func(_ *cobra.Command, _ []string) {
 
-			_logger.Initialize("no-rng-svc")
-			_logger.WithOptions(zap.Fields(
-				zap.String("app", "no-rng-svc"),
-				zap.String("host", hostname),
-			))
+			logger.Initialize("no-rng-svc")
 			log = zap.L()
 			defer log.Sync()
 

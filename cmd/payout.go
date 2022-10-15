@@ -5,7 +5,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	_logger "github.com/nightowlcasino/nightowl/logger"
+	logger "github.com/nightowlcasino/nightowl/logger"
 	"github.com/nightowlcasino/nightowl/services/payout"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -20,11 +20,7 @@ func payoutSvcCommand() *cobra.Command {
 		Short: "Run a server that traverses the oracle addresses containing all the nightowl games bets and pay out the respective winner.",
 		Run: func(_ *cobra.Command, _ []string) {
 
-			_logger.Initialize("no-payout-svc")
-			_logger.WithOptions(zap.Fields(
-				zap.String("app", "no-payout-svc"),
-				zap.String("host", hostname),
-			))
+			logger.Initialize("no-payout-svc")
 			log = zap.L()
 			defer log.Sync()
 
