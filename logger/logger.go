@@ -1,6 +1,9 @@
 package logger
 
 import (
+	"os"
+
+	zaplogfmt "github.com/jsternberg/zap-logfmt"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -28,15 +31,11 @@ func Initialize(svc string) {
 		path = "/var/log/"
 	}
 
-	loggerConf := zap.Config{
-		Level: zap.NewAtomicLevelAt(zap.InfoLevel),
-		Encoding: "json",
-		EncoderConfig: ProdEncoderConf(),
-		OutputPaths: []string{"stdout"},
-		ErrorOutputPaths: []string{"stderr"},
-	}
-
-	logger = zap.Must(loggerConf.Build())
+	logger = zap.New(zapcore.NewCore(
+		zaplogfmt.NewEncoder(ProdEncoderConf()),
+		os.Stdout,
+		zap.NewAtomicLevelAt(zap.InfoLevel),
+	))
 
 	ljWriteSyncer := zapcore.AddSync(&lumberjack.Logger{
 		Filename:   path+svc+".log",
@@ -44,7 +43,11 @@ func Initialize(svc string) {
   		MaxBackups: 3,
   		MaxAge:     30,  // days
 	})
-	ljCore := zapcore.NewCore(zapcore.NewJSONEncoder(ProdEncoderConf()), ljWriteSyncer, zap.InfoLevel)
+
+	ljCore := zapcore.NewCore(
+		zaplogfmt.NewEncoder(ProdEncoderConf()),
+		ljWriteSyncer,
+		zap.NewAtomicLevelAt(zap.InfoLevel))
 
 	logger = logger.WithOptions(zap.WrapCore(func(zapcore.Core) zapcore.Core {
 		return zapcore.NewTee(logger.Core(), ljCore)
@@ -64,21 +67,4 @@ func ProdEncoderConf() zapcore.EncoderConfig {
 	encConf.EncodeTime = zapcore.RFC3339TimeEncoder
 
 	return encConf
-}
-
-func Info(msg string, fields ...zap.Field) {
-	logger.Info(msg, fields...)
-}
-
-func Error(msg string, fields ...zap.Field) {
-	logger.Error(msg, fields...)
-}
-
-func Debug(msg string, fields ...zap.Field) {
-	logger.Debug(msg, fields...)
-}
-
-func WithOptions(opts ...zap.Option) {
-	logger = logger.WithOptions(opts...)
-	zap.ReplaceGlobals(logger)
 }
