@@ -94,7 +94,7 @@ func NewService() (service *Service, err error) {
 		done:        make(chan bool),
 	}
 
-	return service, err
+	return service, nil
 }
 
 func wait(sleepTime time.Duration, c chan bool) {
@@ -132,21 +132,53 @@ loop:
 		case <-checkbets:
 			// clear structs
 			var ergTxs = erg.ErgBoxIds{}
+			var ergTxsBuff = erg.ErgBoxIds{}
 			var ergUtxo = erg.ErgTxOutputNode{}
 			var isSettled bool
+			limit := 50
+			offset := 0
 			// Need to keep retrying if this fails
 			currHeight, err := s.ergNode.GetCurrenHeight()
 			if err != nil {
 				log.Error("failed to get current erg height", zap.Error(err))
 			}
 
+			// continuously call GetOracleTxs() until we get all txs
 			start := time.Now()
-			ergTxs, err = s.ergExplorer.GetOracleTxs(lastHeight, currHeight)
-			if err != nil {
-				log.Error("failed to get oracle txs", zap.Error(err), zap.Int64("durationMs", time.Since(start).Milliseconds()))
-			} else {
-				log.Info("received erg txs to process", zap.Int("tx_count", len(ergTxs.Items)), zap.Int64("durationMs", time.Since(start).Milliseconds()))
+			for {
+				start1 := time.Now()
+				ergTxsBuff, err = s.ergExplorer.GetOracleTxs(lastHeight, currHeight, limit, offset)
+				if err != nil {
+					log.Error("failed to get oracle txs",
+						zap.Error(err),
+						zap.Int64("durationMs",time.Since(start).Milliseconds()),
+						zap.Int("last_height", lastHeight),
+						zap.Int("curr_height", currHeight),
+						zap.Int("limit", limit),
+						zap.Int("offset", offset),
+					)
+					continue
+				}
+				log.Debug("received erg txs",
+					zap.Int("tx_count", len(ergTxsBuff.Items)),
+					zap.Int64("durationMs", time.Since(start1).Milliseconds()),
+					zap.Int("last_height", lastHeight),
+					zap.Int("curr_height", currHeight),
+					zap.Int("limit", limit),
+					zap.Int("offset", offset),
+				)
+
+				if len(ergTxsBuff.Items) == 0 {
+					break
+				}
+
+				offset += limit
+				ergTxs.Items = append(ergTxs.Items, ergTxsBuff.Items...)
 			}
+			log.Info("finished getting all oracle txs",
+				zap.Int("total_txs", len(ergTxs.Items)),
+				zap.Int64("durationMs", time.Since(start).Milliseconds()),
+			)
 
 			for _, ergTx := range ergTxs.Items {
 				// convert R4 rendered value to []string
@@ -267,11 +299,13 @@ loop:
 									if isSettled {
 										// change lastBetHeight if we know we have successfully settled every bet which has
 										// a height less than lastBetHeight
-										err = s.rdb.Set(s.ctx, "oracle:lastBetHeight", ergTx.Height, 0).Err()
-										if err != nil {
-											log.Error("failed to set key in redis db", zap.Error(err), zap.String("redis_key", "oracle:lastBetHeight"))
+										if ergTx.Height > lastHeight {
+											err = s.rdb.Set(s.ctx, "oracle:lastBetHeight", ergTx.Height, 0).Err()
+											if err != nil {
+												log.Error("failed to set key in redis db", zap.Error(err), zap.String("redis_key", "oracle:lastBetHeight"))
+											}
+											lastHeight = ergTx.Height
 										}
-										lastHeight = ergTx.Height
 									}
 									log.Info("finished processing roulette bet", zap.Int64("durationMs", time.Since(startBet).Milliseconds()), zap.String("erg_utxo_box_id", ergUtxo.BoxId))
 								}

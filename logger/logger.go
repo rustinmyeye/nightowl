@@ -35,7 +35,7 @@ func Initialize(svc string) {
 		zaplogfmt.NewEncoder(ProdEncoderConf()),
 		os.Stdout,
 		zap.NewAtomicLevelAt(zap.InfoLevel),
-	))
+	), zap.AddCaller())
 
 	ljWriteSyncer := zapcore.AddSync(&lumberjack.Logger{
 		Filename:   path+svc+".log",

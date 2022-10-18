@@ -140,10 +140,10 @@ func (n *ErgNode) GetCurrenHeight() (int, error) {
 	return height, nil
 }
 
-func (n *ErgNode) GetUnconfirmedTxs(limit, offset string) ([]ErgTxUnconfirmed, error) {
+func (n *ErgNode) GetUnconfirmedTxs(limit, offset int) ([]ErgTxUnconfirmed, error) {
 	var txs []ErgTxUnconfirmed
 
-	endpoint := fmt.Sprintf("%s%s?limit=%s&offset=%s", n.url.String(), getUnconfirmedTxs, limit, offset)
+	endpoint := fmt.Sprintf("%s%s?limit=%d&offset=%d", n.url.String(), getUnconfirmedTxs, limit, offset)
 
 	req, err := retryablehttp.NewRequest("GET", endpoint, nil)
 	if err != nil {

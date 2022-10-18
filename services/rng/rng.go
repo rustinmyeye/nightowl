@@ -14,7 +14,7 @@ const (
 
 type Service struct {
 	component string
-	Nats      *nats.Conn
+	nats      *nats.Conn
 }
 
 type CombinedHashes struct {
@@ -34,7 +34,7 @@ func NewService(nats *nats.Conn) (service *Service, err error) {
 
 	service = &Service{
 		component: "rng",
-		Nats:      nats,
+		nats:      nats,
 	}
 
 	if _, err = nats.Subscribe(viper.Get("nats.random_number_subj").(string), service.handleNATSMessages); err != nil {
