@@ -42,10 +42,10 @@ func NewExplorer(client *retryablehttp.Client) (*Explorer, error) {
 	return node, nil
 }
 
-func (e *Explorer) GetOracleTxs(minHeight, maxHeight int) (ErgBoxIds, error) {
+func (e *Explorer) GetOracleTxs(minHeight, maxHeight, limit, offset int) (ErgBoxIds, error) {
 	var ergTxs ErgBoxIds
 
-	endpoint := fmt.Sprintf("%s/api/v1/addresses/%s/transactions?fromHeight=%d&toHeight=%d", e.url.String(), oracleAddress, minHeight, maxHeight)
+	endpoint := fmt.Sprintf("%s/api/v1/addresses/%s/transactions?fromHeight=%d&toHeight=%d&limit=%d&offset=%d", e.url.String(), oracleAddress, minHeight, maxHeight, limit, offset)
 	req, err := retryablehttp.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return ergTxs, fmt.Errorf("failed to build oracle transactions request - %s", err.Error())

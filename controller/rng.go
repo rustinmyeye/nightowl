@@ -14,11 +14,6 @@ import (
 )
 
 const (
-	// HeaderContentType is the Content-Type header key.
-	HeaderContentType = "Content-Type"
-	// ContentTypeJSON is the application/json MIME type.
-	ContentTypeJSON = "application/json"
-
 	hexBytes = "0123456789abcdef"
 )
 
@@ -37,16 +32,6 @@ func random(n int, src rand.Source) string {
 		b[i] = hexBytes[src.Int63()%int64(len(hexBytes))]
 	}
 	return string(b)
-}
-
-func opts() httprouter.Handle {
-	return func (w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, owl-session-id")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "")
-	}
 }
 
 func SendRandNum(nc *nats.Conn) httprouter.Handle {
@@ -72,6 +57,10 @@ func SendRandNum(nc *nats.Conn) httprouter.Handle {
 
 		go func(game, boxId, walletAddr string, nc *nats.Conn) {
 			timeout := time.NewTicker(120 * time.Second)
+			wake := make(chan bool, 1)
+			// let it select the wake case first
+			wake <- true
+
 			for {
 				select {
 				case <-timeout.C:
@@ -84,7 +73,7 @@ func SendRandNum(nc *nats.Conn) httprouter.Handle {
 						zap.String("session_id", sessionId),
 					)
 					return
-				default:
+				case <-wake:
 					if randNum, ok := rng.GetRandHashMap().Get(boxId); ok {
 						topic := fmt.Sprintf("%s.%s", game, walletAddr)
 						nc.Publish(topic, []byte(randNum))
@@ -98,8 +87,9 @@ func SendRandNum(nc *nats.Conn) httprouter.Handle {
 						)
 						return
 					}
-					time.Sleep(5 * time.Second)
+				default:
 				}
+				go wait(5 * time.Second, wake)
 			}
 		}(game, boxId, walletAddr, nc)
 	
