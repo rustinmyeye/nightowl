@@ -13,6 +13,7 @@ import (
 var (
 	logger *zap.Logger
 	path string
+	atomicLevel zap.AtomicLevel
 )
 
 type lumberjackSink struct {
@@ -31,10 +32,12 @@ func Initialize(svc string) {
 		path = "/var/log/"
 	}
 
+	atomicLevel = zap.NewAtomicLevel()
+
 	logger = zap.New(zapcore.NewCore(
 		zaplogfmt.NewEncoder(ProdEncoderConf()),
 		os.Stdout,
-		zap.NewAtomicLevelAt(zap.InfoLevel),
+		atomicLevel,
 	), zap.AddCaller())
 
 	ljWriteSyncer := zapcore.AddSync(&lumberjack.Logger{
@@ -47,7 +50,7 @@ func Initialize(svc string) {
 	ljCore := zapcore.NewCore(
 		zaplogfmt.NewEncoder(ProdEncoderConf()),
 		ljWriteSyncer,
-		zap.NewAtomicLevelAt(zap.InfoLevel))
+		atomicLevel)
 
 	logger = logger.WithOptions(zap.WrapCore(func(zapcore.Core) zapcore.Core {
 		return zapcore.NewTee(logger.Core(), ljCore)
@@ -61,6 +64,26 @@ func Flush() {
 		logger.Sync()
 	}
 }
+
+func SetLevel(l string) {
+	atomicLevel.SetLevel(parseLevel(l))
+}
+
+func parseLevel(l string) zapcore.Level {
+	switch l {
+	case "debug":
+		return zap.DebugLevel
+	case "info":
+		return zap.InfoLevel
+	case "warn":
+		return zap.WarnLevel
+	case "error":
+		return zap.ErrorLevel
+	default:
+		return zap.InfoLevel
+	}
+}
+
 
 func ProdEncoderConf() zapcore.EncoderConfig {
 	encConf := zap.NewProductionEncoderConfig()

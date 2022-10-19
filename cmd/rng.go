@@ -27,17 +27,10 @@ func rngSvcCommand() *cobra.Command {
 			log = zap.L()
 			defer log.Sync()
 
-			//if value := viper.Get("logging.level"); value != nil {
-			//	lvl, err := logger.ParseLevel(value.(string))
-			//	if err != nil {
-			//		logger.Warnf(1, "config logging.level is not valid, defaulting to info log level")
-			//		logger.SetVerbosity(1)
-			//	}
-			//	logger.SetVerbosity(lvl)
-			//} else {
-			//	logger.Warnf(1, "config logging.level is not found, defaulting to info log level")
-			//	logger.SetVerbosity(1)
-			//}
+			if value := viper.Get("logging.level"); value != nil {
+				// logger will default to info level if user provided level is incorrect
+				logger.SetLevel(value.(string))
+			}
 
 			// validate configs and set defaults if necessary
 			if value := viper.Get("nats.endpoint"); value != nil {
