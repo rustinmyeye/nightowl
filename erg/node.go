@@ -19,6 +19,7 @@ var (
 	getUtxoBox        = "/utxo/byId/"
 	getLastHeaders    = "/blocks/lastHeaders/1"
 	getUnconfirmedTxs = "/transactions/unconfirmed"
+	getTxFee          = "/transactions/getFee"
 	ergoTreeToAddr    = "/utils/ergoTreeToAddress/"
 	serializeBox      = "/utxo/withPool/byIdBinary/"
 )
@@ -296,4 +297,30 @@ func (n *ErgNode) ErgoTreeToAddress(ergoTree string) (string, error) {
 	}
 
 	return address["address"].(string), nil
+}
+
+func (n *ErgNode) GetTxFee(txSize int) (int, error) {
+	var fee int
+
+	endpoint := fmt.Sprintf("%s%s?waitTime=1&txSize=%d", n.url.String(), getTxFee, txSize)
+
+	req, err := retryablehttp.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return fee, fmt.Errorf("error creating getTxFee request - %s", err.Error())
+	}
+	req.SetBasicAuth(n.user, n.pass)
+
+	resp, err := n.client.Do(req)
+	if err != nil {
+		return fee, fmt.Errorf("error getting erg tx fee - %s", err.Error())
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fee, fmt.Errorf("error parsing erg tx fee response - %s", err.Error())
+	}
+
+	fee, _ = strconv.Atoi(string(body))
+
+	return fee, nil
 }
