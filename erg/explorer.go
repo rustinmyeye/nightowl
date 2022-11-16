@@ -3,7 +3,7 @@ package erg
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"strconv"
 
@@ -25,9 +25,8 @@ type Explorer struct {
 
 func NewExplorer(client *retryablehttp.Client) (*Explorer, error) {
 	var node *Explorer
-	var u *url.URL
 
-	u = &url.URL{
+	var u = &url.URL{
 		Scheme: viper.Get("explorer_node.scheme").(string),
 		Host: viper.Get("explorer_node.fqdn").(string)+":"+strconv.Itoa(viper.Get("explorer_node.port").(int)),
 	}
@@ -57,7 +56,7 @@ func (e *Explorer) GetOracleTxs(minHeight, maxHeight, limit, offset int) (ErgBox
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return ergTxs, fmt.Errorf("error reading erg txs body - %s", err.Error())
 	}
@@ -85,7 +84,7 @@ func (e *Explorer) GetErgTx(unconfirmedTx string) (ErgTx, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return ergTx, fmt.Errorf("error reading erg tx body - %s", err.Error())
 	}

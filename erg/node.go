@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"strconv"
 
@@ -13,15 +13,16 @@ import (
 )
 
 var (
-	walletLock        = "/wallet/lock"
-	walletUnlock      = "/wallet/unlock"
-	postErgTx         = "/wallet/transaction/send"
-	getUtxoBox        = "/utxo/byId/"
-	getLastHeaders    = "/blocks/lastHeaders/1"
-	getUnconfirmedTxs = "/transactions/unconfirmed"
-	getTxFee          = "/transactions/getFee"
-	ergoTreeToAddr    = "/utils/ergoTreeToAddress/"
-	serializeBox      = "/utxo/withPool/byIdBinary/"
+	walletLock        				= "/wallet/lock"
+	walletUnlock      				= "/wallet/unlock"
+	postErgTx         				= "/wallet/transaction/send"
+	getUtxoBox        				= "/utxo/byId/"
+	getLastHeaders    				= "/blocks/lastHeaders/1"
+	getUnconfirmedTxs 				= "/transactions/unconfirmed"
+	getUnconfirmedOutputsByErgoTree = "/transactions/unconfirmed/outputs/byErgoTree"
+	getTxFee          				= "/transactions/getFee"
+	ergoTreeToAddr    				= "/utils/ergoTreeToAddress/"
+	serializeBox      				= "/utxo/withPool/byIdBinary/"
 )
 
 type ErgNode struct {
@@ -35,9 +36,8 @@ type ErgNode struct {
 
 func NewErgNode(client *retryablehttp.Client) (*ErgNode, error) {
 	var node *ErgNode
-	var u *url.URL
 
-	u = &url.URL{
+	var u = &url.URL{
 		Scheme: viper.Get("ergo_node.scheme").(string),
 		Host: viper.Get("ergo_node.fqdn").(string)+":"+strconv.Itoa(viper.Get("ergo_node.port").(int)),
 	}
@@ -73,7 +73,7 @@ func (n *ErgNode) unlockWallet() ([]byte, error) {
 		return ret, fmt.Errorf("error unlocking erg node wallet - %s", err.Error())
 	}
 
-	ret, err = ioutil.ReadAll(resp.Body)
+	ret, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return ret, fmt.Errorf("error parsing erg node unlock response - %s", err.Error())
 	}
@@ -99,7 +99,7 @@ func (n *ErgNode) lockWallet() ([]byte, error) {
 		return ret, fmt.Errorf("error locking erg node wallet - %s", err.Error())
 	}
 
-	ret, err = ioutil.ReadAll(resp.Body)
+	ret, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return ret, fmt.Errorf("error parsing erg node lock response - %s", err.Error())
 	}
@@ -126,7 +126,7 @@ func (n *ErgNode) GetCurrenHeight() (int, error) {
 		return height, fmt.Errorf("error calling block last headers - %s", err.Error())
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return height, fmt.Errorf("error parsing block last headers response - %s", err.Error())
 	}
@@ -160,7 +160,7 @@ func (n *ErgNode) GetUnconfirmedTxs(limit, offset int) ([]ErgTxUnconfirmed, erro
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return txs, fmt.Errorf("error reading erg txs body - %s", err.Error())
 	}
@@ -171,6 +171,43 @@ func (n *ErgNode) GetUnconfirmedTxs(limit, offset int) ([]ErgTxUnconfirmed, erro
 	}
 
 	return txs, nil
+}
+
+func (n *ErgNode) GetUnconfirmedOutputsByErgoTree(ergoTree string, limit, offset int) ([]ErgTxOutputNode, error) {
+	var outputs []ErgTxOutputNode
+
+	endpoint := fmt.Sprintf("%s%s?limit=%d&offset=%d", n.url.String(), getUnconfirmedOutputsByErgoTree, limit, offset)
+
+	payload, err := json.Marshal(ergoTree)
+	if err != nil {
+		return outputs, fmt.Errorf("error marshalling unconfirmed tx outputs payload - %s", err.Error())
+	}
+
+	req, err := retryablehttp.NewRequest("POST", endpoint, bytes.NewBuffer(payload))
+	if err != nil {
+		return outputs, fmt.Errorf("error creating unconfirmed tx outputs request - %s", err.Error())
+	}
+	req.SetBasicAuth(n.user, n.pass)
+	req.Header.Set("api_key", n.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := n.client.Do(req)
+	if err != nil {
+		return outputs, fmt.Errorf("error calling GetUnconfirmedOutputsByErgoTree - %s", err.Error())
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return outputs, fmt.Errorf("error reading erg utxo outputs body - %s", err.Error())
+	}
+
+	err = json.Unmarshal(body, &outputs)
+	if err != nil {
+		return outputs, fmt.Errorf("error unmarshalling unconfirmed utxo outputs body - %s", err.Error())
+	}
+
+	return outputs, nil
 }
 
 func (n *ErgNode) PostErgOracleTx(payload []byte) ([]byte, error) {
@@ -204,7 +241,7 @@ func (n *ErgNode) PostErgOracleTx(payload []byte) ([]byte, error) {
 		return ret, fmt.Errorf("response status code %d", resp.StatusCode)
 	}
 
-	ret, err = ioutil.ReadAll(resp.Body)
+	ret, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return ret, fmt.Errorf("error parsing erg tx response - %s", err.Error())
 	}
@@ -228,7 +265,7 @@ func (n *ErgNode) SerializeErgBox(boxId string) (string, error) {
 		return bytes.Bytes, fmt.Errorf("error getting serializing erg box - %s", err.Error())
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return bytes.Bytes, fmt.Errorf("error parsing serialized erg box response - %s", err.Error())
 	}
@@ -257,7 +294,7 @@ func (n *ErgNode) GetErgUtxoBox(boxId string) (ErgTxOutputNode, error) {
 		return utxo, fmt.Errorf("error getting erg utxo box - %s", err.Error())
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return utxo, fmt.Errorf("error parsing erg utxo box response - %s", err.Error())
 	}
@@ -286,7 +323,7 @@ func (n *ErgNode) ErgoTreeToAddress(ergoTree string) (string, error) {
 		return "", fmt.Errorf("error getting erg tree address - %s", err.Error())
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("error parsing erg tree address response - %s", err.Error())
 	}
@@ -315,7 +352,7 @@ func (n *ErgNode) GetTxFee(txSize int) (int, error) {
 		return fee, fmt.Errorf("error getting erg tx fee - %s", err.Error())
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fee, fmt.Errorf("error parsing erg tx fee response - %s", err.Error())
 	}
