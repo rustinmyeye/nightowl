@@ -64,7 +64,7 @@ func TestGetTxFee(t *testing.T) {
 		{
 			"TestGoodInput",
 			2776,
-			1130292,
+			1000000,
 		},
 	}
 
@@ -72,8 +72,26 @@ func TestGetTxFee(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			txFee, err := ergNodeClient.GetTxFee(2776)
 			assert.NoError(t, err)
-
-			assert.Equal(t, tc.want, txFee, "unexpected value.")
+			assert.GreaterOrEqual(t, txFee, tc.want, "unexpected fee value.")
 		})
 	}
+}
+
+func TestGetUnconfirmedOutputsByErgoTree(t *testing.T) {
+	initConfigs(t)
+
+	ergNodeClient, err := NewErgNode(retryClient)
+	require.NoError(t, err)
+
+	// get 1 unconfirmed tx from the blockchain
+	tx, err := ergNodeClient.GetUnconfirmedTxs(1, 0)
+	assert.NoError(t, err)
+	assert.Len(t, tx, 1)
+
+	// pull out an ergoTree value to use
+	ergoTree := tx[0].Outputs[0].ErgoTree
+
+	boxes, err := ergNodeClient.GetUnconfirmedOutputsByErgoTree(ergoTree, 1, 0)
+	assert.NoError(t, err)
+	assert.Len(t, boxes, 1, "erg utxo output box not filtered.")
 }
