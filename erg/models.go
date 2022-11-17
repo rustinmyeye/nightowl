@@ -34,6 +34,7 @@ type ErgTxOutputNode struct {
 	Assets              []Tokens      `json:"assets,omitempty"`
 	AdditionalRegisters RegistersNode `json:"additionalRegisters,omitempty"`
 	ErgoTree            string        `json:"ergoTree"`
+	TxId                string        `json:"transactionId"`
 }
 
 type ErgHeader []struct {
