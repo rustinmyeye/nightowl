@@ -134,7 +134,8 @@ loop:
 			var ergTxs = erg.ErgBoxIds{}
 			var ergTxsBuff = erg.ErgBoxIds{}
 			var ergUtxo = erg.ErgTxOutputNode{}
-			var isSettled bool
+			var isSettled, allSettled bool
+			var txHeight int
 			limit := 50
 			offset := 0
 			// Need to keep retrying if this fails
@@ -181,12 +182,18 @@ loop:
 			)
 
 			for _, ergTx := range ergTxs.Items {
+				// assume all bets are settled until proven otherwise
+				allSettled = true
+
+				if ergTx.Height > txHeight {
+					txHeight = ergTx.Height
+				}
 				// convert R4 rendered value to []string
 				r4 := ergTx.Outputs[0].AdditionalRegisters.R4.Value
 				// remove surrounding brackets [ and ]
 				r4 = strings.TrimPrefix(r4, "[")
 				r4 = strings.TrimSuffix(r4, "]")
-				ethHashSlices := strings.Split(r4, ",")
+				randNumbers := strings.Split(r4, ",")
 
 				// convert R5 rendered value to [][]string
 				r5 := ergTx.Outputs[0].AdditionalRegisters.R5.Value
@@ -200,6 +207,7 @@ loop:
 				ergBoxIdsSlices = ergBoxIdsSlices[:len(ergBoxIdsSlices)-1]
 
 				for i, ergBoxIdsSlice := range ergBoxIdsSlices {
+
 					// remove leading [
 					ergBoxIdsClean := strings.TrimPrefix(ergBoxIdsSlice, "[")
 					ergBoxIds := strings.Split(ergBoxIdsClean, ",")
@@ -236,17 +244,18 @@ loop:
 									bet, err := s.rdb.HGetAll(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr).Result()
 									switch {
 									case err == redis.Nil || len(bet) == 0:
+										isSettled = false
 										var randNum string
-										if i+2 <= len(ethHashSlices)-1 {
-											randNum = ethHashSlices[i+2]
+										if i+1 <= len(randNumbers)-1 {
+											randNum = randNumbers[i+1]
 										}
 
 										b := make(map[string]string)
 										b["settled"]    = "false"
 										b["winnerAmt"]  = strconv.Itoa(ergUtxo.Assets[0].Amount)
+										b["winnerAddr"] = ""
 										b["subgame"]    = ergUtxo.AdditionalRegisters.R4
 										b["number"]     = ergUtxo.AdditionalRegisters.R5
-										b["playerAddr"] = plyrAddr
 										b["randomNum"]  = randNum
 
 										// add bet to redis db
@@ -256,13 +265,13 @@ loop:
 										}
 
 										if randNum != "" {
-											err := s.processBet(b, ergUtxo, ergTx, i, j)
+											err := s.processBet(b, ergUtxo, ergTx, plyrAddr, i, j)
 											if err != nil {
 												log.Error("failed to process bet", zap.Error(err))
 											} else {
-												err = s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"], "settled", "true").Err()
+												err = s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr, "settled", "true").Err()
 												if err != nil {
-													log.Error("failed to set settled key to true in redis db", zap.Error(err), zap.String("redis_key", "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"]))
+													log.Error("failed to set settled key to true in redis db", zap.Error(err), zap.String("redis_key", "roulette:"+ergUtxo.BoxId+":"+plyrAddr))
 												}
 												isSettled = true
 											}
@@ -272,8 +281,9 @@ loop:
 										log.Error("failed to get key from redis db", zap.Error(err), zap.String("redis_key", "roulette:"+ergUtxo.BoxId+":"+plyrAddr))
 									default:
 										if bet["randomNum"] == "" {
-											if i+2 <= len(ethHashSlices)-1 {
-												err := s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr, "randomNum", ethHashSlices[i+2]).Err()
+											if i+1 <= len(randNumbers)-1 {
+												bet["randomNum"] = randNumbers[i+1]
+												err := s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr, "randomNum", randNumbers[i+1]).Err()
 												if err != nil {
 													log.Error("failed to set key in redis db", zap.Error(err), zap.String("redis_key", "roulette:"+ergUtxo.BoxId+":"+plyrAddr))
 												}
@@ -283,40 +293,43 @@ loop:
 										// check if settled already
 										isSettled, _ = strconv.ParseBool(bet["settled"])
 										if !isSettled && bet["randomNum"] != "" {
-											err := s.processBet(bet, ergUtxo, ergTx, i, j)
+											err := s.processBet(bet, ergUtxo, ergTx, plyrAddr, i, j)
 											if err != nil {
 												log.Error("failed to process bet", zap.Error(err))
 											} else {
-												err = s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"], "settled", "true").Err()
+												err = s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr, "settled", "true").Err()
 												if err != nil {
-													log.Error("failed to set settled key to true in redis db", zap.Error(err), zap.String("redis_key", "roulette:"+ergUtxo.BoxId+":"+bet["playerAddr"]))
+													log.Error("failed to set settled key to true in redis db", zap.Error(err), zap.String("redis_key", "roulette:"+ergUtxo.BoxId+":"+plyrAddr))
 												}
 												isSettled = true
 											}
 										}
 									}
 
-									if isSettled {
-										// change lastBetHeight if we know we have successfully settled every bet which has
-										// a height less than lastBetHeight
-										if ergTx.Height > lastHeight {
-											err = s.rdb.Set(s.ctx, "oracle:lastBetHeight", ergTx.Height, 0).Err()
-											if err != nil {
-												log.Error("failed to set key in redis db", zap.Error(err), zap.String("redis_key", "oracle:lastBetHeight"))
-											}
-											lastHeight = ergTx.Height
-										}
-									}
 									log.Info("finished processing roulette bet", zap.Int64("durationMs", time.Since(startBet).Milliseconds()), zap.String("erg_utxo_box_id", ergUtxo.BoxId))
 								}
 							}
 						}
 					}
+					if !isSettled {
+						allSettled = false
+					}
+				}
+				if allSettled {
+					// change lastBetHeight if we know we have successfully settled every bet which has
+					// a height less than lastBetHeight
+					if txHeight > lastHeight {
+						err = s.rdb.Set(s.ctx, "oracle:lastBetHeight", txHeight, 0).Err()
+						if err != nil {
+							log.Error("failed to set key in redis db", zap.Error(err), zap.String("redis_key", "oracle:lastBetHeight"))
+						}
+						lastHeight = txHeight
+					}
 				}
 			}
+			
 			// start timer in separate go routine
 			go wait(2 * time.Minute, checkbets)
-		default:
 		}
 	}
 }
@@ -344,14 +357,23 @@ func (s *Service) Wait() {
 	<-s.done
 }
 
-func (s *Service) processBet(bet map[string]string, box erg.ErgTxOutputNode, tx erg.ErgTx, boxPosX, boxPosY int) error {
+func (s *Service) processBet(bet map[string]string, box erg.ErgTxOutputNode, tx erg.ErgTx, plyrAddr string, boxPosX, boxPosY int) error {
 	var winnerAddr string
 
 	// figure out winner and create tx to send to result contract address
 	randNum, err := getRandNum(bet["randomNum"])
 	if err != nil {
-		return fmt.Errorf("failed to get random number from key '%s' - %s", "roulette:"+box.BoxId+":"+bet["playerAddr"], err)
+		return fmt.Errorf("failed to get random number from key '%s' - %s", "roulette:"+box.BoxId+":"+plyrAddr, err)
 	} else {
+		serializedBetBox, err := s.ergNode.SerializeErgBox(box.BoxId)
+		if err != nil {
+			return fmt.Errorf("call to SerializeErgBox with serializedBetBox failed - %s", err.Error())
+		}
+		serializedOracleBox, _ := s.ergNode.SerializeErgBox(tx.Outputs[0].BoxId)
+		if err != nil {
+			return fmt.Errorf("call to SerializeErgBox with serializedOracleBox failed - %s", err.Error())
+		}
+
 		subgame, _ := strconv.Atoi(bet["subgame"][2:])
 		chipspot, _ := strconv.Atoi(bet["number"][2:])
 		sg := decodeZigZag64(uint64(subgame))
@@ -359,20 +381,10 @@ func (s *Service) processBet(bet map[string]string, box erg.ErgTxOutputNode, tx 
 
 		winner := winner(int(sg), int(cs), randNum)
 		if winner {
-			winnerAddr = bet["playerAddr"]
+			winnerAddr = plyrAddr
 		} else {
 			winnerAddr = houseAddress
 		}
-		log.Debug("successfully got erg utxo box",
-			zap.String("erg_utxo_box_id", box.BoxId),
-			zap.String("winner_addr", winnerAddr),
-			zap.Int("random_number", randNum),
-			zap.Int("subgame", int(sg)),
-			zap.Int("chipspot", int(cs)),
-		)
-
-		serializedBetBox, _ := s.ergNode.SerializeErgBox(box.BoxId)
-		serializedOracleBox, _ := s.ergNode.SerializeErgBox(tx.Outputs[0].BoxId)
 		
 		start := time.Now()
 		txUnsigned, _ := buildResultSmartContractTx(box, encodeZigZag64(uint64(boxPosX)), encodeZigZag64(uint64(boxPosY)), winnerAddr, serializedBetBox, serializedOracleBox)
@@ -389,13 +401,23 @@ func (s *Service) processBet(bet map[string]string, box erg.ErgTxOutputNode, tx 
 		}
 		log.Info("successfully sent tx to result smart contract", zap.Int64("durationMs", time.Since(start).Milliseconds()), zap.String("tx_id", string(txSigned)))
 		
-		// add tx id to the payout entry in redis
-		tx_id := make(map[string]interface{})
-		tx_id["txId"] = txSigned
+		log.Debug("erg utxo box results",
+			zap.String("erg_utxo_box_id", box.BoxId),
+			zap.String("winner_addr", winnerAddr),
+			zap.Int("winner_amount", box.Assets[0].Amount),
+			zap.Int("random_number", randNum),
+			zap.Int("subgame", int(sg)),
+			zap.Int("chipspot", int(cs)),
+		)
 
-		err = s.rdb.HSet(s.ctx, "roulette:"+box.BoxId+":"+bet["playerAddr"], tx_id).Err()
+		// add tx id and winner address to the payout entry in redis
+		addons := make(map[string]interface{})
+		addons["txId"] = string(txSigned)
+		addons["winnerAddr"] = string(winnerAddr)
+
+		err = s.rdb.HSet(s.ctx, "roulette:"+box.BoxId+":"+plyrAddr, addons).Err()
 		if err != nil {
-			return fmt.Errorf("failed to set txId for key '%s' to redis db - %s", "roulette:"+box.BoxId+":"+bet["playerAddr"], err)
+			return fmt.Errorf("failed to set txId for key '%s' to redis db - %s", "roulette:"+box.BoxId+":"+plyrAddr, err)
 		}
 	}
 
