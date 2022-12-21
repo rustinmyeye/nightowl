@@ -349,10 +349,8 @@ func (s *Service) Stop() {
 }
 
 func (s *Service) Wait(wg *sync.WaitGroup) {
-	fmt.Println("Inside payout Wait()")
 	defer wg.Done()
 	<-s.done
-	fmt.Println("Leaving payout Wait()")
 }
 
 func (s *Service) processBet(bet map[string]string, box erg.ErgTxOutputNode, tx erg.ErgTx, plyrAddr string, boxPosX, boxPosY int) error {
