@@ -24,7 +24,7 @@ func (lumberjackSink) Sync() error {
 	return nil
 }
 
-func Initialize(svc string) {
+func Initialize(svc, hostname string) {
 
 	if value := viper.Get("LOG_PATH"); value != nil {
 		path = value.(string)
@@ -38,7 +38,19 @@ func Initialize(svc string) {
 		zaplogfmt.NewEncoder(ProdEncoderConf()),
 		os.Stdout,
 		atomicLevel,
-	), zap.AddCaller())
+	), zap.AddCaller(),
+	   zap.Fields(
+		zap.Field{
+			Key: "app",
+			Type: zapcore.StringType,
+			String: svc,
+		},
+		zap.Field{
+			Key: "hostname",
+			Type: zapcore.StringType,
+			String: hostname,
+		},
+	   ))
 
 	ljWriteSyncer := zapcore.AddSync(&lumberjack.Logger{
 		Filename:   path+svc+".log",

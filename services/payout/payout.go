@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-redis/redis/v9"
@@ -36,7 +37,7 @@ type Service struct {
 	done        chan bool
 }
 
-func NewService() (service *Service, err error) {
+func NewService(rdb *redis.Client) (service *Service, err error) {
 
 	ctx := context.Background()
 	log = zap.L()
@@ -77,12 +78,6 @@ func NewService() (service *Service, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create erg node client - %s", err.Error())
 	}
-
-	rdb := redis.NewClient(&redis.Options{
-		Addr:	  "localhost:6379",
-		Password: "",
-		DB:		  0,
-	})
 
 	service = &Service{
 		ctx:         ctx,
@@ -353,7 +348,8 @@ func (s *Service) Stop() {
 	s.stop <- true
 }
 
-func (s *Service) Wait() {
+func (s *Service) Wait(wg *sync.WaitGroup) {
+	defer wg.Done()
 	<-s.done
 }
 
