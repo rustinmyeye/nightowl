@@ -24,8 +24,8 @@ Long Description`,
 
 	log *zap.Logger
 
-	MissingNodeWalletPassErr = errors.New("config ergo_node.wallet_password is missing")
-	MissingNodeApiKeyErr = errors.New("config ergo_node.api_key is missing")
+	ErrMissingNodeWalletPass = errors.New("config ergo_node.wallet_password is missing")
+	ErrMissingNodeApiKey = errors.New("config ergo_node.api_key is missing")
 )
 
 // Execute is the core component for all the backend services

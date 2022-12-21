@@ -18,7 +18,7 @@ const (
 )
 
 var (
-	RandNumNotFound = errors.New("timeout - random number not found")
+	ErrRandNumNotFound = errors.New("timeout - random number not found")
 )
 
 func wait(sleepTime time.Duration, c chan bool) {
@@ -65,7 +65,7 @@ func SendRandNum(nc *nats.Conn) httprouter.Handle {
 				select {
 				case <-timeout.C:
 					log.Info("sendRandNum timed out",
-						zap.Error(RandNumNotFound),
+						zap.Error(ErrRandNumNotFound),
 						zap.Int64("durationMs", time.Since(start).Milliseconds()),
 						zap.String("box_id", boxId),
 						zap.String("game", game),
@@ -87,7 +87,6 @@ func SendRandNum(nc *nats.Conn) httprouter.Handle {
 						)
 						return
 					}
-				default:
 				}
 				go wait(5 * time.Second, wake)
 			}
@@ -124,21 +123,17 @@ func SendTestRandNum(nc *nats.Conn) httprouter.Handle {
 			wake := make(chan bool, 1)
 			go wait(10 * time.Second, wake)
 
-			for {
-				select {
-				case <-wake:
-					topic := fmt.Sprintf("roulette.%s", walletAddr)
-						nc.Publish(topic, []byte(randNum))
-						log.Info("successfully sent random number",
-							zap.Int64("durationMs", time.Since(start).Milliseconds()),
-							zap.String("rand_num", randNum),
-							zap.String("game", "roulette"),
-							zap.String("wallet_addr", walletAddr),
-							zap.String("session_id", sessionId),
-						)
-					return
-				default:
-				}
+			for range wake {
+				topic := fmt.Sprintf("roulette.%s", walletAddr)
+				nc.Publish(topic, []byte(randNum))
+				log.Info("successfully sent random number",
+					zap.Int64("durationMs", time.Since(start).Milliseconds()),
+					zap.String("rand_num", randNum),
+					zap.String("game", "roulette"),
+					zap.String("wallet_addr", walletAddr),
+					zap.String("session_id", sessionId),
+				)
+				return
 			}
 		}(walletAddr, nc)
 	
