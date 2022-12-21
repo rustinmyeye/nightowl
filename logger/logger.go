@@ -81,6 +81,10 @@ func SetLevel(l string) {
 	atomicLevel.SetLevel(parseLevel(l))
 }
 
+func GetLevel() string {
+	return atomicLevel.Level().String()
+}
+
 func parseLevel(l string) zapcore.Level {
 	switch l {
 	case "debug":

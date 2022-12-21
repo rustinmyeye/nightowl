@@ -9,6 +9,8 @@ import (
 
 	"github.com/go-redis/redis/v9"
 	"github.com/nats-io/nats.go"
+	"github.com/nightowlcasino/nightowl/config"
+	"github.com/nightowlcasino/nightowl/controller"
 	logger "github.com/nightowlcasino/nightowl/logger"
 	"github.com/nightowlcasino/nightowl/services/notif"
 	"github.com/nightowlcasino/nightowl/services/payout"
@@ -29,33 +31,20 @@ func payoutSvcCommand() *cobra.Command {
 			log = zap.L()
 			defer log.Sync()
 
-			if value := viper.Get("logging.level"); value != nil {
-				// logger will default to info level if user provided level is incorrect
-				logger.SetLevel(value.(string))
+			config.SetLoggingDefaults()
+
+			if value := viper.Get("nats.endpoint"); value != nil {
+				natsEndpoint = value.(string)
+			} else {
+				natsEndpoint = nats.DefaultURL
 			}
 
-			if value := viper.Get("explorer_node.fqdn"); value == nil {
-				viper.Set("explorer_node.fqdn", "api.ergoplatform.com")
+			if value := viper.Get("nats.notif_payouts_subj"); value == nil {
+				viper.Set("nats.notif_payouts_subj", "notif.payouts")
 			}
 
-			if value := viper.Get("explorer_node.scheme"); value == nil {
-				viper.Set("explorer_node.scheme", "https")
-			}
-
-			if value := viper.Get("explorer_node.port"); value == nil {
-				viper.Set("explorer_node.port", 443)
-			}
-
-			if value := viper.Get("ergo_node.fqdn"); value == nil {
-				viper.Set("ergo_node.fqdn", "213.239.193.208")
-			}
-
-			if value := viper.Get("ergo_node.scheme"); value == nil {
-				viper.Set("ergo_node.scheme", "http")
-			}
-
-			if value := viper.Get("ergo_node.port"); value == nil {
-				viper.Set("ergo_node.port", 9053)
+			if value := viper.Get("payout.port"); value == nil {
+				viper.Set("rng.port", "8090")
 			}
 
 			if value := viper.Get("ergo_node.api_key"); value == nil {
@@ -98,6 +87,10 @@ func payoutSvcCommand() *cobra.Command {
 				os.Exit(1)
 			}
 
+			router := controller.NewRouter(nc, rdb, "payout")
+			server := controller.NewServer(router, viper.Get("payout.port").(int))
+			
+			server.Start()
 			payoutSvc.Start()
 			notifSvc.Start()
 
@@ -108,6 +101,7 @@ func payoutSvcCommand() *cobra.Command {
 				log.Info(s.String() + " signal caught, stopping app")
 				payoutSvc.Stop()
 				notifSvc.Stop()
+				server.Stop()
 			}()
 
 			log.Info("service started...")
@@ -118,6 +112,7 @@ func payoutSvcCommand() *cobra.Command {
 			go payoutSvc.Wait(&wg)
 			wg.Add(1)
 			go notifSvc.Wait(&wg)
+			go server.Wait()
 
 			wg.Wait()
 		},

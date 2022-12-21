@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/nightowlcasino/nightowl/config"
 	"github.com/spf13/viper"
 )
 
@@ -25,6 +26,8 @@ type Explorer struct {
 
 func NewExplorer(client *retryablehttp.Client) (*Explorer, error) {
 	var node *Explorer
+
+	config.SetExplorerDefaults()
 
 	var u = &url.URL{
 		Scheme: viper.Get("explorer_node.scheme").(string),

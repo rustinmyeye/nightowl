@@ -24,7 +24,7 @@ func (r *Router) Ready() {
 	r.ready = true
 }
 
-func NewRouter(nats *nats.Conn, rdb *redis.Client) *Router {
+func NewRouter(nats *nats.Conn, rdb *redis.Client, serviceProvider string) *Router {
 	h := httprouter.New()
 	h.RedirectTrailingSlash = false
 	h.RedirectFixedPath = false
@@ -57,18 +57,25 @@ func NewRouter(nats *nats.Conn, rdb *redis.Client) *Router {
 			)
 		})
 
-	h.GET("/info", func(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// administrative routes
+	h.GET("/api/v1/info", func(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 		json.NewEncoder(w).Encode(buildinfo.Info)
 	})
+	h.GET("/api/v1/verbosity", Verbosity())
+	h.PUT("/api/v1/verbosity", SetVerbosity())
 
-	h.GET("/api/v1/random-number/:game", SendRandNum(nats))
-	h.OPTIONS("/api/v1/random-number/:game", opts())
+	switch serviceProvider {
+	case "rng":
+		h.GET("/api/v1/random-number/:game", SendRandNum(nats))
+		h.OPTIONS("/api/v1/random-number/:game", opts())
 
-	h.GET("/api/v1/test/random-number/roulette", SendTestRandNum(nats))
-	h.OPTIONS("/api/v1/test/random-number/roulette", opts())
+		h.GET("/api/v1/test/random-number/roulette", SendTestRandNum(nats))
+		h.OPTIONS("/api/v1/test/random-number/roulette", opts())
 
-	h.GET("/api/v1/notifs/:walletAddr", LimitHandler(SendNotifs(nats, rdb), limitr))
-	h.OPTIONS("/api/v1/notifs/:walletAddr", opts())
+	case "payout":
+		h.GET("/api/v1/notifs/:walletAddr", LimitHandler(SendNotifs(nats, rdb), limitr))
+		h.OPTIONS("/api/v1/notifs/:walletAddr", opts())
+	}
 
 	r.ready = true
 
