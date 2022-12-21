@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-redis/redis/v9"
 	"github.com/nats-io/nats.go"
+	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
 
@@ -26,11 +27,11 @@ type Service struct {
 }
 
 type Notif struct {
-	Type       string `json:"type" redis:"type"`
-	WalletAddr string `json:"address" redis:"address"`
-	Amount     string `json:"amount" redis:"amount"`
+	Type       string `json:"type"      redis:"type"`
+	WalletAddr string `json:"address"   redis:"address"`
+	Amount     string `json:"amount"    redis:"amount"`
 	TokenName  string `json:"tokenName" redis:"tokenName"`
-	TxID       string `json:"txid" redis:"txid"`
+	TxID       string `json:"txid"      redis:"txid"`
 }
 
 func (n Notif) MarshalBinary() ([]byte, error) {
@@ -51,10 +52,10 @@ func NewService(nats *nats.Conn, rdb *redis.Client) (service *Service, err error
 		done:      make(chan bool),
 	}
 
-	if _, err = nats.Subscribe("notif.payouts", service.handleNATSMessages); err != nil {
+	if _, err = nats.Subscribe(viper.Get("nats.notif_payouts_subj").(string), service.handleNATSMessages); err != nil {
 		return nil, err
 	}
-	log.Info("successfully subscribed to notif.payouts")
+	log.Info("successfully subscribed to " + viper.Get("nats.notif_payouts_subj").(string))
 
 	return service, nil
 }
@@ -87,7 +88,7 @@ loop:
 			log.Info("stopping notifySpent() loop...")
 			break loop
 		case <-checkPayouts:
-			fmt.Println("check payouts")
+			log.Debug("check payouts")
 		}
 
 		go wait(5 * time.Second, checkPayouts)

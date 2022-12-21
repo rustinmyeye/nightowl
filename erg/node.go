@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/nightowlcasino/nightowl/config"
 	"github.com/spf13/viper"
 )
 
@@ -36,6 +37,8 @@ type ErgNode struct {
 
 func NewErgNode(client *retryablehttp.Client) (*ErgNode, error) {
 	var node *ErgNode
+
+	config.SetNodeDefaults()
 
 	var u = &url.URL{
 		Scheme: viper.Get("ergo_node.scheme").(string),

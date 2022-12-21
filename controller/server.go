@@ -8,7 +8,6 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	http_no "github.com/nightowlcasino/nightowl/http"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -18,8 +17,8 @@ const (
 	ContentTypeJSON = "application/json"
 )
 
-func NewServer(handler http.Handler) *http_no.Server {
-	return http_no.NewServer(":"+strconv.Itoa(viper.Get("rng.port").(int)),
+func NewServer(handler http.Handler, port int) *http_no.Server {
+	return http_no.NewServer(":"+strconv.Itoa(port),
 		handler,
 		http_no.ReadTimeout(1*time.Minute),
 		http_no.WriteTimeout(1*time.Minute),

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-redis/redis/v9"
 	"github.com/nats-io/nats.go"
+	"github.com/nightowlcasino/nightowl/config"
 	"github.com/nightowlcasino/nightowl/controller"
 
 	logger "github.com/nightowlcasino/nightowl/logger"
@@ -29,10 +30,7 @@ func rngSvcCommand() *cobra.Command {
 			log = zap.L()
 			defer log.Sync()
 
-			if value := viper.Get("logging.level"); value != nil {
-				// logger will default to info level if user provided level is incorrect
-				logger.SetLevel(value.(string))
-			}
+			config.SetLoggingDefaults()
 
 			// validate configs and set defaults if necessary
 			if value := viper.Get("nats.endpoint"); value != nil {
@@ -49,18 +47,6 @@ func rngSvcCommand() *cobra.Command {
 				viper.Set("rng.port", "8089")
 			}
 
-			if value := viper.Get("ergo_node.fqdn"); value == nil {
-				viper.Set("ergo_node.fqdn", "213.239.193.208")
-			}
-
-			if value := viper.Get("ergo_node.scheme"); value == nil {
-				viper.Set("ergo_node.scheme", "http")
-			}
-
-			if value := viper.Get("ergo_node.port"); value == nil {
-				viper.Set("ergo_node.port", 9053)
-			}
-
 			if value := viper.Get("ergo_node.api_key"); value == nil {
 				log.Error("required config is absent", zap.Error(ErrMissingNodeApiKey))
 				os.Exit(1)
@@ -72,7 +58,7 @@ func rngSvcCommand() *cobra.Command {
 			}
 
 			// Connect to the nats server
-			nats, err := nats.Connect(natsEndpoint)
+			nc, err := nats.Connect(natsEndpoint)
 			if err != nil {
 				log.Error("failed to connect to nats server", zap.Error(err), zap.String("endpoint", natsEndpoint))
 				os.Exit(1)
@@ -90,15 +76,15 @@ func rngSvcCommand() *cobra.Command {
 				os.Exit(1)
 			}
 
-			_, err = rng.NewService(nats)
+			_, err = rng.NewService(nc)
 			if err != nil {
 				log.Error("failed to create rng service", zap.Error(err))
 				os.Exit(1)
 			}
 
-			router := controller.NewRouter(nats, rdb)
-
-			server := controller.NewServer(router)
+			router := controller.NewRouter(nc, rdb, "rng")
+			server := controller.NewServer(router, viper.Get("rng.port").(int))
+			
 			server.Start()
 			
 			signals := make(chan os.Signal, 1)

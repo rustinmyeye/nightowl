@@ -93,7 +93,7 @@ func SendRandNum(nc *nats.Conn) httprouter.Handle {
 		}(game, boxId, walletAddr, nc)
 	
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "")
+		fmt.Fprint(w, "")
 	}
 }
 
@@ -138,6 +138,6 @@ func SendTestRandNum(nc *nats.Conn) httprouter.Handle {
 		}(walletAddr, nc)
 	
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "")
+		fmt.Fprint(w, "")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/nightowlcasino/nightowl/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -18,8 +19,6 @@ var (
 	cmd = &cobra.Command{
 		Use:   config.Application,
 		Short: config.ApplicationFull,
-		Long: `
-Long Description`,
 	}
 
 	log *zap.Logger
@@ -69,6 +68,12 @@ func initConfig() {
 		viper.AddConfigPath(dir)
 		viper.SetConfigName("config")
 		viper.SetConfigType("yaml")
+		viper.WatchConfig()
+		viper.OnConfigChange(func(in fsnotify.Event){
+			log = zap.L()
+			log.Info("config change detected for " + in.Name + " reloading configs")
+			config.SetLoggingDefaults()
+		})
 	}
 
 	if err := viper.ReadInConfig(); err == nil {
