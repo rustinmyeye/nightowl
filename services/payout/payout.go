@@ -35,9 +35,10 @@ type Service struct {
 	rdb         *redis.Client
 	stop        chan bool
 	done        chan bool
+	wg          *sync.WaitGroup
 }
 
-func NewService(rdb *redis.Client) (service *Service, err error) {
+func NewService(rdb *redis.Client, wg *sync.WaitGroup) (service *Service, err error) {
 
 	ctx := context.Background()
 	log = zap.L()
@@ -87,6 +88,7 @@ func NewService(rdb *redis.Client) (service *Service, err error) {
 		rdb:         rdb,
 		stop:        make(chan bool),
 		done:        make(chan bool),
+		wg:          wg,
 	}
 
 	return service, nil
@@ -123,6 +125,7 @@ loop:
 		select {
 		case <-stop:
 			log.Info("stopping payoutBets() loop...")
+			s.wg.Done()
 			break loop
 		case <-checkbets:
 			// clear structs
@@ -332,6 +335,7 @@ loop:
 func (s *Service) Start() {
 	
 	stopPayout := make(chan bool)
+	s.wg.Add(1)
 	go s.payoutBets(stopPayout)
 
 	// Wait for a "stop" message in the background to stop the service.

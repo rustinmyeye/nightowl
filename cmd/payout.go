@@ -75,13 +75,15 @@ func payoutSvcCommand() *cobra.Command {
 				log.Error("failed to connect to redis db", zap.Error(err), zap.String("endpoint", "localhost:6379"))
 			}
 
-			payoutSvc, err := payout.NewService(rdb)
+			var wg sync.WaitGroup
+
+			payoutSvc, err := payout.NewService(rdb, &wg)
 			if err != nil {
 				log.Error("failed to create payout service", zap.Error(err))
 				os.Exit(1)
 			}
 
-			notifSvc, err := notif.NewService(nc, rdb)
+			notifSvc, err := notif.NewService(nc, rdb, &wg)
 			if err != nil {
 				log.Error("failed to create notif service", zap.Error(err))
 				os.Exit(1)
@@ -89,7 +91,7 @@ func payoutSvcCommand() *cobra.Command {
 
 			router := controller.NewRouter(nc, rdb, "payout")
 			server := controller.NewServer(router, viper.Get("payout.port").(int))
-			
+
 			server.Start()
 			payoutSvc.Start()
 			notifSvc.Start()
@@ -105,8 +107,6 @@ func payoutSvcCommand() *cobra.Command {
 			}()
 
 			log.Info("service started...")
-
-			var wg sync.WaitGroup
 
 			wg.Add(1)
 			go payoutSvc.Wait(&wg)

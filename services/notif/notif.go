@@ -24,6 +24,7 @@ type Service struct {
 	rdb       *redis.Client
 	stop      chan bool
 	done      chan bool
+	wg        *sync.WaitGroup
 }
 
 type Notif struct {
@@ -38,7 +39,7 @@ func (n Notif) MarshalBinary() ([]byte, error) {
     return json.Marshal(n)
 }
 
-func NewService(nats *nats.Conn, rdb *redis.Client) (service *Service, err error) {
+func NewService(nats *nats.Conn, rdb *redis.Client, wg *sync.WaitGroup) (service *Service, err error) {
 
 	ctx := context.Background()
 	log = zap.L()
@@ -50,6 +51,7 @@ func NewService(nats *nats.Conn, rdb *redis.Client) (service *Service, err error
 		rdb:       rdb,
 		stop:      make(chan bool),
 		done:      make(chan bool),
+		wg:        wg,
 	}
 
 	if _, err = nats.Subscribe(viper.Get("nats.notif_payouts_subj").(string), service.handleNATSMessages); err != nil {
@@ -86,6 +88,7 @@ loop:
 		select {
 		case <-stop:
 			log.Info("stopping notifySpent() loop...")
+			s.wg.Done()
 			break loop
 		case <-checkPayouts:
 			log.Debug("check payouts")
@@ -98,6 +101,7 @@ loop:
 func (s *Service) Start() {
 	
 	stopScanning := make(chan bool)
+	s.wg.Add(1)
 	go s.notifySpent(stopScanning)
 
 	// Wait for a "stop" message in the background to stop the service.
