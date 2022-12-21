@@ -11,7 +11,6 @@ import (
 	"github.com/nightowlcasino/nightowl/controller"
 
 	logger "github.com/nightowlcasino/nightowl/logger"
-	"github.com/nightowlcasino/nightowl/services/notif"
 	"github.com/nightowlcasino/nightowl/services/rng"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -92,12 +91,6 @@ func rngSvcCommand() *cobra.Command {
 			}
 
 			_, err = rng.NewService(nats)
-			if err != nil {
-				log.Error("failed to create rng service", zap.Error(err))
-				os.Exit(1)
-			}
-
-			_, err = notif.NewService(nats, rdb)
 			if err != nil {
 				log.Error("failed to create rng service", zap.Error(err))
 				os.Exit(1)
