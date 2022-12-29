@@ -4,13 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-redis/redis/v9"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/nats-io/nats.go"
+	"github.com/nightowlcasino/nightowl/erg"
+	"github.com/nightowlcasino/nightowl/state"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+)
+
+const (
+	notConfirmedRedisKey = "confirmed:false"
 )
 
 var (
@@ -20,7 +28,9 @@ var (
 type Service struct {
 	ctx       context.Context
 	component string
+	ergNode   *erg.ErgNode
 	nats      *nats.Conn
+	ns        *state.NotifState
 	rdb       *redis.Client
 	stop      chan bool
 	done      chan bool
@@ -39,15 +49,22 @@ func (n Notif) MarshalBinary() ([]byte, error) {
     return json.Marshal(n)
 }
 
-func NewService(nats *nats.Conn, rdb *redis.Client, wg *sync.WaitGroup) (service *Service, err error) {
+func NewService(nats *nats.Conn, rdb *redis.Client, retryClient *retryablehttp.Client, ns *state.NotifState, wg *sync.WaitGroup) (service *Service, err error) {
 
 	ctx := context.Background()
 	log = zap.L()
 
+	ergNodeClient, err := erg.NewErgNode(retryClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create erg node client - %s", err.Error())
+	}
+
 	service = &Service{
 		ctx:       ctx,
 		component: "notif",
+		ergNode:   ergNodeClient,
 		nats:      nats,
+		ns:        ns,
 		rdb:       rdb,
 		stop:      make(chan bool),
 		done:      make(chan bool),
@@ -69,17 +86,6 @@ func wait(sleepTime time.Duration, c chan bool) {
 
 func (s *Service) notifySpent(stop chan bool) {
 	checkPayouts := make(chan bool, 1)
-	// On start up load state from redis db
-	// we are looking for txs that are settled == true but
-	// confirmed == false and are not the liquidity pool wallet address
-	
-	// loop through and check if box ids are spent or not
-
-	// if box id return as spent then we build a Notif struct and send it
-	// on the nats queue to be processed
-
-	// Lastly, update redis db entry with confirmed = true and then remove
-	// tx from state data structure
 
 	checkPayouts <- true
 
@@ -91,10 +97,76 @@ loop:
 			s.wg.Done()
 			break loop
 		case <-checkPayouts:
-			log.Debug("check payouts")
+			// loop through and check if box id(s) are spent or not
+			for notConf := range s.ns.NotConfirmed {
+				firstColon := strings.Index(notConf, ":")
+				lastColon := strings.LastIndex(notConf, ":")
+				boxId := notConf[firstColon+1:lastColon]
+				betType := notConf[:firstColon]
+				// check if box id is spent
+				log.Debug("checking boxId", zap.String("box_id", boxId))
+				utxo, err := s.ergNode.GetErgUtxoBox(boxId)
+				if err != nil {
+					log.Error("failed to get utxo from node by box id", zap.Error(err), zap.String("box_id", boxId))
+					continue
+				}
+
+				// if box id returned as spent (404 Not Found) then we build a Notif struct and send it
+				// on the nats queue to be processed
+				if utxo.BoxId == "" {
+					log.Debug("boxId spent", zap.String("box_id", boxId))
+
+					bet, err := s.rdb.HGetAll(s.ctx, notConf).Result()
+					switch {
+					case err != nil:
+						log.Error("failed to get key from redis db", zap.Error(err), zap.String("redis_key", notConf))
+						continue
+					default:
+						notif := Notif{
+							Type: 		betType,
+							WalletAddr: bet["playerAddr"],
+							Amount: 	bet["winnerAmt"],
+							TokenName: 	"OWL",
+							TxID: 		bet["txId"],
+						}
+						notifMar, err := json.Marshal(notif)
+						if err != nil {
+							log.Error("failed to marshal notif struct", zap.Error(err), zap.Any("notif", notif))
+							continue
+						}
+						err = s.nats.Publish(viper.Get("nats.notif_payouts_subj").(string), notifMar)
+						if err != nil {
+							log.Error("failed to publish notif struct to notif payouts subject",
+								zap.Error(err),
+								zap.Any("notif", notif),
+								zap.String("nats_subject", viper.Get("nats.notif_payouts_subj").(string)),
+							)
+							continue
+						}
+						// remove tx from notif state data structure and confirmed:false redis set
+						err = s.ns.RemoveNotConfirmed(notConf)
+						if err != nil {
+							log.Error("failed to remove member from redis db",
+								zap.Error(err),
+								zap.String("member_key", notConfirmedRedisKey),
+								zap.String("member_name", notConf),
+							)
+							continue
+						}
+						// update redis db entry with confirmed = true
+						addons := make(map[string]interface{})
+						addons["confirmed"] = "true"
+
+						err = s.rdb.HSet(s.ctx, notConf, addons).Err()
+						if err != nil {
+							log.Error("failed to set confirmed=true for bet in redis db", zap.Error(err), zap.String("redis_key", notConf))
+						}
+					}
+				}
+			}
 		}
 
-		go wait(5 * time.Second, checkPayouts)
+		go wait(30 * time.Second, checkPayouts)
 	}
 }
 

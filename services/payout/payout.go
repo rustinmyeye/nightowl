@@ -3,8 +3,6 @@ package payout
 import (
 	"context"
 	"fmt"
-	"net"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +11,7 @@ import (
 	"github.com/go-redis/redis/v9"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/nightowlcasino/nightowl/erg"
+	"github.com/nightowlcasino/nightowl/state"
 	"go.uber.org/zap"
 )
 
@@ -32,43 +31,17 @@ type Service struct {
 	component   string
 	ergNode     *erg.ErgNode
 	ergExplorer *erg.Explorer
+	ns          *state.NotifState
 	rdb         *redis.Client
 	stop        chan bool
 	done        chan bool
 	wg          *sync.WaitGroup
 }
 
-func NewService(rdb *redis.Client, wg *sync.WaitGroup) (service *Service, err error) {
+func NewService(rdb *redis.Client, retryClient *retryablehttp.Client, ns *state.NotifState, wg *sync.WaitGroup) (service *Service, err error) {
 
 	ctx := context.Background()
 	log = zap.L()
-
-	t := &http.Transport{
-		Dial: (&net.Dialer{
-			Timeout: 3 * time.Second,
-		}).Dial,
-		MaxIdleConns:        100,
-		MaxConnsPerHost:     100,
-		MaxIdleConnsPerHost: 100,
-		TLSHandshakeTimeout: 3 * time.Second,
-	}
-
-	retryClient := retryablehttp.NewClient()
-	retryClient.HTTPClient.Transport = t
-	retryClient.HTTPClient.Timeout = time.Second * 10
-	retryClient.Logger = nil
-	retryClient.RetryWaitMin = 200 * time.Millisecond
-	retryClient.RetryWaitMax = 250 * time.Millisecond
-	retryClient.RetryMax = 2
-	retryClient.RequestLogHook = func(l retryablehttp.Logger, r *http.Request, i int) {
-		retryCount := i
-		if retryCount > 0 {
-			log.Info("retryClient request failed, retrying...",
-				zap.String("url", r.URL.String()),
-				zap.Int("retryCount", retryCount),
-			)
-		}
-	}
 
 	ergExplorerClient, err := erg.NewExplorer(retryClient)
 	if err != nil {
@@ -85,6 +58,7 @@ func NewService(rdb *redis.Client, wg *sync.WaitGroup) (service *Service, err er
 		component:   "payout",
 		ergNode:     ergNodeClient,
 		ergExplorer: ergExplorerClient,
+		ns:          ns,
 		rdb:         rdb,
 		stop:        make(chan bool),
 		done:        make(chan bool),
@@ -250,6 +224,7 @@ loop:
 
 										b := make(map[string]string)
 										b["settled"]    = "false"
+										b["confirmed"]  = "false"
 										b["winnerAmt"]  = strconv.Itoa(ergUtxo.Assets[0].Amount)
 										b["winnerAddr"] = ""
 										b["subgame"]    = ergUtxo.AdditionalRegisters.R4
@@ -267,10 +242,6 @@ loop:
 											if err != nil {
 												log.Error("failed to process bet", zap.Error(err))
 											} else {
-												err = s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr, "settled", "true").Err()
-												if err != nil {
-													log.Error("failed to set settled key to true in redis db", zap.Error(err), zap.String("redis_key", "roulette:"+ergUtxo.BoxId+":"+plyrAddr))
-												}
 												isSettled = true
 											}
 										}
@@ -295,10 +266,6 @@ loop:
 											if err != nil {
 												log.Error("failed to process bet", zap.Error(err))
 											} else {
-												err = s.rdb.HSet(s.ctx, "roulette:"+ergUtxo.BoxId+":"+plyrAddr, "settled", "true").Err()
-												if err != nil {
-													log.Error("failed to set settled key to true in redis db", zap.Error(err), zap.String("redis_key", "roulette:"+ergUtxo.BoxId+":"+plyrAddr))
-												}
 												isSettled = true
 											}
 										}
@@ -358,12 +325,14 @@ func (s *Service) Wait(wg *sync.WaitGroup) {
 }
 
 func (s *Service) processBet(bet map[string]string, box erg.ErgTxOutputNode, tx erg.ErgTx, plyrAddr string, boxPosX, boxPosY int) error {
-	var winnerAddr string
+	var winnerAddr, betKey string
+
+	betKey = fmt.Sprintf("roulette:%s:%s", box.BoxId, plyrAddr)
 
 	// figure out winner and create tx to send to result contract address
 	randNum, err := getRandNum(bet["randomNum"])
 	if err != nil {
-		return fmt.Errorf("failed to get random number from key '%s' - %s", "roulette:"+box.BoxId+":"+plyrAddr, err)
+		return fmt.Errorf("failed to parse random number from key '%s' - %s", betKey, err)
 	} else {
 		serializedBetBox, err := s.ergNode.SerializeErgBox(box.BoxId)
 		if err != nil {
@@ -414,10 +383,16 @@ func (s *Service) processBet(bet map[string]string, box erg.ErgTxOutputNode, tx 
 		addons := make(map[string]interface{})
 		addons["txId"] = string(txSigned)
 		addons["winnerAddr"] = string(winnerAddr)
+		addons["settled"] = "true"
 
-		err = s.rdb.HSet(s.ctx, "roulette:"+box.BoxId+":"+plyrAddr, addons).Err()
+		err = s.rdb.HSet(s.ctx, betKey, addons).Err()
 		if err != nil {
-			return fmt.Errorf("failed to set txId for key '%s' to redis db - %s", "roulette:"+box.BoxId+":"+plyrAddr, err)
+			return fmt.Errorf("failed to set txId for key '%s' to redis db - %s", betKey, err)
+		}
+
+		// update NotifState with bet redis key if winner is not the house
+		if winnerAddr != houseAddress {
+			s.ns.AddNotConfirmed(betKey)
 		}
 	}
 
