@@ -2,18 +2,23 @@ package cmd
 
 import (
 	"context"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/go-redis/redis/v9"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/nats-io/nats.go"
 	"github.com/nightowlcasino/nightowl/config"
 	"github.com/nightowlcasino/nightowl/controller"
 	logger "github.com/nightowlcasino/nightowl/logger"
 	"github.com/nightowlcasino/nightowl/services/notif"
 	"github.com/nightowlcasino/nightowl/services/payout"
+	"github.com/nightowlcasino/nightowl/state"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -75,17 +80,53 @@ func payoutSvcCommand() *cobra.Command {
 				log.Error("failed to connect to redis db", zap.Error(err), zap.String("endpoint", "localhost:6379"))
 			}
 
+			t := &http.Transport{
+				Dial: (&net.Dialer{
+					Timeout: 3 * time.Second,
+				}).Dial,
+				MaxIdleConns:        100,
+				MaxConnsPerHost:     100,
+				MaxIdleConnsPerHost: 100,
+				TLSHandshakeTimeout: 3 * time.Second,
+			}
+
+			retryClient := retryablehttp.NewClient()
+			retryClient.HTTPClient.Transport = t
+			retryClient.HTTPClient.Timeout = time.Second * 10
+			retryClient.Logger = nil
+			retryClient.RetryWaitMin = 200 * time.Millisecond
+			retryClient.RetryWaitMax = 250 * time.Millisecond
+			retryClient.RetryMax = 2
+			retryClient.RequestLogHook = func(l retryablehttp.Logger, r *http.Request, i int) {
+				retryCount := i
+				if retryCount > 0 {
+					log.Info("retryClient request failed, retrying...",
+						zap.String("url", r.URL.String()),
+						zap.Int("retryCount", retryCount),
+					)
+				}
+			}
+
 			var wg sync.WaitGroup
 
-			payoutSvc, err := payout.NewService(rdb, &wg)
+			notifState := state.NewNotifState(context.Background(), rdb)
+
+			payoutSvc, err := payout.NewService(rdb, retryClient, notifState, &wg)
 			if err != nil {
 				log.Error("failed to create payout service", zap.Error(err))
 				os.Exit(1)
 			}
 
-			notifSvc, err := notif.NewService(nc, rdb, &wg)
+			notifSvc, err := notif.NewService(nc, rdb, retryClient, notifState, &wg)
 			if err != nil {
 				log.Error("failed to create notif service", zap.Error(err))
+				os.Exit(1)
+			}
+
+			// populate NotifState from redis DB
+			err = notifState.DBSync()
+			if err != nil {
+				log.Error("failed to sync redis DB for notif state", zap.Error(err))
 				os.Exit(1)
 			}
 

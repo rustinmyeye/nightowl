@@ -297,6 +297,10 @@ func (n *ErgNode) GetErgUtxoBox(boxId string) (ErgTxOutputNode, error) {
 		return utxo, fmt.Errorf("error getting erg utxo box - %s", err.Error())
 	}
 
+	if resp.StatusCode == 404 {
+		return utxo, nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return utxo, fmt.Errorf("error parsing erg utxo box response - %s", err.Error())
