@@ -237,7 +237,7 @@ Because the client is sending their wallet address and game name to the endpoint
 
 repo url - https://github.com/nightowlcasino/rng-svc
 
-After a bet has officially been added to the ERG blockchain anyone would be able to execute the result smart contract which pays out to the winner of nightowls bet(s). A winner is either the house liquidity pool or the players wallet. The game result smart contract can be found [here](https://github.com/nightowlcasino/ergoscript-contracts/blob/main/roulette/result-contract.md#box-schema-for-spending).
+After a bet has officially been added to the ERG blockchain anyone would be able to execute the result smart contract which pays out to the winner of nightowls bet(s). A winner is either the house liquidity pool or the players wallet. The game result smart contract can be found [here](https://github.com/nightowlcasino/ergoscript-contracts/blob/main/games/roulette/contracts/rouletteResultContract.md).
 
 The process for which the bet verifier/payout service works is,
 
